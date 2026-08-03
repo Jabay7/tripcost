@@ -181,6 +181,19 @@ export default function DriversScreen() {
         </Body>
       </Card>
 
+      <Card>
+        <Label>New to this?</Label>
+        <Body>
+          The walkthrough covers what each part is for and the two or three things people usually get
+          wrong. About two minutes.
+        </Body>
+        <Button
+          title="How this app works"
+          variant="secondary"
+          onPress={() => router.push('/walkthrough')}
+        />
+      </Card>
+
       <Card accent={colors.amber}>
         <Label>What this app is not</Label>
         <Body>

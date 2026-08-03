@@ -5,10 +5,21 @@ import type { Company, Driver, Fleet, LedgerEntry, Truck, TruckProfile } from '.
 
 const STORAGE_KEY = 'tripcost.state.v2';
 
+/**
+ * Bump when the walkthrough gains something an existing user needs to see.
+ * Returning users are re-offered the tour once; they can still decline.
+ */
+export const ONBOARDING_VERSION = 1;
+
 export type PersistedState = {
   fleet: Fleet;
   ledger: LedgerEntry[];
   activeTruckId: string | null;
+  /**
+   * Highest walkthrough version this user has finished or explicitly skipped.
+   * 0 means they have never been through it — a genuinely first-time user.
+   */
+  onboardingVersion: number;
 };
 
 export function newId(prefix = 'id'): string {
@@ -210,6 +221,7 @@ function seedState(): PersistedState {
     },
     ledger,
     activeTruckId: t1.id,
+    onboardingVersion: 0,
   };
 }
 
@@ -228,6 +240,10 @@ type Store = PersistedState & {
   updateCompany: (patch: Partial<Company>) => void;
   addLedgerEntry: (e: LedgerEntry) => void;
   removeLedgerEntry: (id: string) => void;
+  /** Mark the walkthrough as done — whether they read it or skipped it. */
+  completeOnboarding: () => void;
+  /** Put the tour back on the next launch. Used by the "show me again" entry. */
+  restartOnboarding: () => void;
   resetToSeed: () => void;
 };
 
@@ -244,8 +260,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (!cancelled && raw) {
           const parsed = JSON.parse(raw) as PersistedState;
-          // Guard against a partially-written or older payload.
-          if (parsed?.fleet?.trucks?.length) setState(parsed);
+          // Guard against a partially-written or older payload. `onboardingVersion`
+          // was added after the first release, so a payload without it belongs to
+          // someone already using the app — treat them as onboarded rather than
+          // interrupting a working install with a tour.
+          if (parsed?.fleet?.trucks?.length) {
+            setState({
+              ...parsed,
+              onboardingVersion: parsed.onboardingVersion ?? ONBOARDING_VERSION,
+            });
+          }
         }
       } catch {
         // A corrupt payload should not brick the app; the seed state stands.
@@ -358,6 +382,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, ledger: s.ledger.filter((e) => e.id !== id) }));
   }, []);
 
+  const completeOnboarding = useCallback(() => {
+    setState((s) => ({ ...s, onboardingVersion: ONBOARDING_VERSION }));
+  }, []);
+
+  const restartOnboarding = useCallback(() => {
+    setState((s) => ({ ...s, onboardingVersion: 0 }));
+  }, []);
+
   const resetToSeed = useCallback(() => setState(seedState()), []);
 
   const value = useMemo<Store>(
@@ -376,6 +408,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateCompany,
       addLedgerEntry,
       removeLedgerEntry,
+      completeOnboarding,
+      restartOnboarding,
       resetToSeed,
     }),
     [
@@ -393,6 +427,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateCompany,
       addLedgerEntry,
       removeLedgerEntry,
+      completeOnboarding,
+      restartOnboarding,
       resetToSeed,
     ],
   );

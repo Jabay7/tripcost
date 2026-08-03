@@ -4,6 +4,7 @@ import React from 'react';
 import { StoreProvider } from '../src/store/store';
 import { TripProvider } from '../src/store/trip';
 import { ErrorBoundary } from '../src/ui/ErrorBoundary';
+import { OnboardingGate } from '../src/ui/OnboardingGate';
 import { colors } from '../src/ui/theme';
 
 export default function RootLayout() {
@@ -12,6 +13,7 @@ export default function RootLayout() {
     <StoreProvider>
       <TripProvider>
         <StatusBar style="light" />
+        <OnboardingGate />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.surface },
@@ -22,6 +24,8 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="welcome" options={{ headerShown: false }} />
+          <Stack.Screen name="walkthrough" options={{ headerShown: false }} />
           <Stack.Screen name="brief" options={{ title: 'Trip Brief' }} />
           <Stack.Screen name="add-cost" options={{ title: 'Add Cost', presentation: 'modal' }} />
           <Stack.Screen name="scan" options={{ title: 'Scan Document' }} />

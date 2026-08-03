@@ -27,6 +27,7 @@ import {
 } from '../src/services';
 import { decodeFlexiblePolyline } from '../src/services/routing';
 import { AlertSeenSet, type RoadAlert } from '../src/services/alerts';
+import { WALKTHROUGH } from '../src/data/walkthrough';
 import type { AddedCost, Driver, LedgerEntry, TripInput, Truck } from '../src/types';
 
 const DALLAS = cityById('dal')!;
@@ -654,6 +655,77 @@ describe('fleet report', () => {
       Math.abs(bucketSum - r.combined.totalCost) < 1,
       `buckets ${bucketSum.toFixed(2)} vs total ${r.combined.totalCost.toFixed(2)}`,
     );
+  });
+});
+
+describe('first-run walkthrough', () => {
+  it('covers the concepts a user has to understand to get right answers', () => {
+    const text = WALKTHROUGH.map(
+      (s) => `${s.title} ${s.body} ${s.points.join(' ')} ${s.watchOut ?? ''}`,
+    )
+      .join(' ')
+      .toLowerCase();
+
+    // Each of these is a place where a user who does not understand the concept
+    // will read the app's output wrong rather than merely be slower.
+    const mustExplain: [string, string[]][] = [
+      ['deadhead earns nothing', ['deadhead']],
+      ['cash to float vs profit', ['cash to float', 'settlement']],
+      ['break-even per mile', ['break-even']],
+      ['optional costs are opt-in', ['pilot car', 'unless you turn it on']],
+      ['defaults are not your numbers', ['atri', 'your own']],
+      ['routing is not truck-legal', ['truck-legal']],
+      ['it is not an ELD', ['eld']],
+      ['driver copy hides rates', ['no rate']],
+      ['operating ratio', ['operating ratio']],
+    ];
+
+    for (const [concept, needles] of mustExplain) {
+      assert.ok(
+        needles.some((n) => text.includes(n)),
+        `walkthrough never explains: ${concept}`,
+      );
+    }
+  });
+
+  it('is short enough that someone actually finishes it', () => {
+    assert.ok(WALKTHROUGH.length >= 5, 'too thin to be useful');
+    assert.ok(WALKTHROUGH.length <= 12, 'too long — people bail');
+
+    for (const s of WALKTHROUGH) {
+      assert.ok(s.body.length < 400, `${s.id}: body is a wall of text (${s.body.length} chars)`);
+      assert.ok(s.points.length >= 1 && s.points.length <= 4, `${s.id}: wrong number of points`);
+      assert.ok(s.chip.length <= 18, `${s.id}: chip too long for the rail`);
+    }
+  });
+
+  it('has unique, stable step ids', () => {
+    const ids = WALKTHROUGH.map((s) => s.id);
+    assert.equal(new Set(ids).size, ids.length, 'duplicate step id');
+    for (const id of ids) assert.match(id, /^[a-z]+$/, `id "${id}" should be a simple slug`);
+  });
+
+  it('opens by saying what the app is and closes by saying what it is not', () => {
+    assert.equal(WALKTHROUGH[0].id, 'what');
+    assert.equal(WALKTHROUGH[WALKTHROUGH.length - 1].id, 'limits');
+    assert.ok(
+      /offline|not truck-legal|averages/i.test(WALKTHROUGH[WALKTHROUGH.length - 1].watchOut ?? ''),
+      'the last step must be honest about the limits',
+    );
+  });
+
+  it('only links to routes that exist', () => {
+    const REAL_ROUTES = new Set([
+      '/(tabs)',
+      '/(tabs)/fleet',
+      '/(tabs)/trucks',
+      '/(tabs)/drivers',
+      '/(tabs)/ledger',
+    ]);
+    for (const s of WALKTHROUGH) {
+      if (!s.visit) continue;
+      assert.ok(REAL_ROUTES.has(s.visit.href), `${s.id} links to a route that does not exist: ${s.visit.href}`);
+    }
   });
 });
 
