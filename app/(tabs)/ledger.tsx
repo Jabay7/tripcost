@@ -81,7 +81,12 @@ export default function LedgerScreen() {
         />
       </Section>
 
-      <Button title="+ Record a cost" onPress={() => router.push('/add-cost?target=ledger')} />
+      <Button title="📷  Scan a bill or invoice" onPress={() => router.push('/scan')} />
+      <Button
+        title="+ Record a cost by hand"
+        variant="secondary"
+        onPress={() => router.push('/add-cost?target=ledger')}
+      />
 
       <Section title="Entries" subtitle={`${visible.length} record${visible.length === 1 ? '' : 's'}`}>
         {visible.length === 0 ? (

@@ -12,6 +12,11 @@ import {
   withOptional,
 } from '../src/data/optionalCosts';
 import {
+  defaultExtractor,
+  MockExtractor,
+  ProxyExtractor,
+} from '../src/services/documents';
+import {
   buildTripBrief,
   MockFuel,
   MockRestrictions,
@@ -646,6 +651,120 @@ describe('fleet report', () => {
       Math.abs(bucketSum - r.combined.totalCost) < 1,
       `buckets ${bucketSum.toFixed(2)} vs total ${r.combined.totalCost.toFixed(2)}`,
     );
+  });
+});
+
+describe('document extraction', () => {
+  it('reads an image as an expense, not a load', async () => {
+    const doc = await new MockExtractor().extract({
+      base64: 'QUJD',
+      mediaType: 'image/jpeg',
+      filename: 'tow.jpg',
+    });
+    assert.equal(doc.kind, 'expense');
+    assert.ok(doc.expense);
+    assert.equal(doc.load, null, 'an invoice is not a load');
+    assert.ok(doc.expense.total > 0);
+  });
+
+  it('reads a rate confirmation as a load, not an expense', async () => {
+    const doc = await new MockExtractor().extract({
+      base64: 'QUJD',
+      mediaType: 'application/pdf',
+      filename: 'ratecon.pdf',
+    });
+    assert.equal(doc.kind, 'load');
+    assert.ok(doc.load);
+    assert.equal(doc.expense, null, 'freight ahead is revenue, not cost');
+  });
+
+  it('never claims sample data is live', async () => {
+    for (const mediaType of ['image/jpeg', 'application/pdf']) {
+      const doc = await new MockExtractor().extract({ base64: 'QUJD', mediaType, filename: 'x' });
+      assert.equal(doc.live, false);
+      assert.ok(
+        doc.warnings.some((w) => w.toLowerCase().includes('sample')),
+        'offline extraction must say so in its warnings',
+      );
+    }
+  });
+
+  it('falls back to the offline extractor when no server is configured', () => {
+    const before = process.env.EXPO_PUBLIC_API_BASE;
+    delete process.env.EXPO_PUBLIC_API_BASE;
+    assert.equal(defaultExtractor().live, false);
+
+    process.env.EXPO_PUBLIC_API_BASE = 'http://localhost:8787';
+    assert.equal(defaultExtractor().live, true);
+
+    if (before === undefined) delete process.env.EXPO_PUBLIC_API_BASE;
+    else process.env.EXPO_PUBLIC_API_BASE = before;
+  });
+
+  it('surfaces a server failure instead of inventing a result', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response('upstream exploded', { status: 500 })) as typeof fetch;
+
+    try {
+      await assert.rejects(
+        () =>
+          new ProxyExtractor('http://localhost:9999').extract({
+            base64: 'QUJD',
+            mediaType: 'image/jpeg',
+            filename: 'x.jpg',
+          }),
+        /Extraction failed \(500\)/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('marks a proxy result as live and tolerates a trailing slash in the base URL', async () => {
+    const payload = {
+      kind: 'expense',
+      confidence: 'high',
+      summary: 'Tire bill',
+      expense: {
+        vendor: 'Roadside Tire',
+        date: '2026-03-10T00:00:00.000Z',
+        total: 640,
+        category: 'tire',
+        invoiceNumber: 'A-1',
+        lineItems: [],
+        gallons: null,
+        pricePerGallon: null,
+        looksReimbursable: false,
+      },
+      load: null,
+      warnings: [],
+      provider: 'server',
+      live: false,
+    };
+
+    const originalFetch = globalThis.fetch;
+    let calledUrl = '';
+    globalThis.fetch = (async (url: string) => {
+      calledUrl = String(url);
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const doc = await new ProxyExtractor('http://localhost:8787/').extract({
+        base64: 'QUJD',
+        mediaType: 'image/jpeg',
+        filename: 'x.jpg',
+      });
+      assert.equal(calledUrl, 'http://localhost:8787/extract', 'no double slash');
+      assert.equal(doc.live, true, 'a proxy result is live regardless of what the body claimed');
+      assert.equal(doc.expense?.total, 640);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

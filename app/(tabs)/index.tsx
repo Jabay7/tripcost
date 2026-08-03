@@ -493,8 +493,9 @@ export default function PlanTripScreen() {
                   <Button title="Remove" variant="danger" onPress={() => removeCost(c.id)} />
                 </Card>
               ))}
+              <Button title="📷  Scan a bill" variant="secondary" onPress={() => router.push('/scan')} />
               <Button
-                title="+ Tow, tire, citation…"
+                title="+ Enter by hand"
                 variant="ghost"
                 onPress={() => router.push('/add-cost?target=trip')}
               />

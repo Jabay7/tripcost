@@ -34,6 +34,12 @@ and DOT medical expiry dates are tracked with warnings at 60 and 30 days.
 the truck is in the shop. Enter it and it flows into the trip total, the cash you
 have to float, and the fleet report — as an actual, not an estimate.
 
+**Scan the paperwork instead of typing it.** Photograph a tow bill, invoice, fuel
+receipt or scale ticket and the vendor, date, total and line items come off the
+page into the ledger. Photograph a rate confirmation or BOL and it prefills the
+trip planner instead — that is freight ahead, not money spent, and the two belong
+in different places. See *Document scanning* below.
+
 ---
 
 ## Running it
@@ -116,6 +122,41 @@ API keys belong on a server proxy, never in the app bundle.
 
 ---
 
+## Document scanning
+
+Scanning works offline out of the box — it returns a clearly-labeled sample so
+the capture → review → apply flow can be demonstrated without a key. To read real
+paperwork, run the extraction server.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...     # get one at console.anthropic.com
+node server/index.mjs                   # listens on :8787
+
+# In another terminal — use your machine's LAN IP so a phone can reach it
+EXPO_PUBLIC_API_BASE=http://192.168.1.20:8787 npm start
+```
+
+**The key lives on the server, never in the app.** A mobile bundle ships to
+devices and can be unpacked, so anything embedded in it is public. `server/index.mjs`
+is the only component that holds the key; the app sends document bytes and gets
+structured JSON back.
+
+**Extraction proposes, the driver disposes.** Nothing reaches the ledger or the
+trip until it has been shown on a review screen and confirmed. A model reading a
+crumpled tow bill at 0200 will occasionally turn a 1 into a 7, and a wrong number
+written silently into the books is worse than no automation. The total is an
+editable field on that screen, and anything the model was unsure about is listed
+as a warning above it. Confirming is one tap.
+
+Uses Claude Opus 5 with structured outputs, so the response is constrained to a
+JSON schema and parses every time — no regex over prose. Roughly $5 per million
+input tokens and $25 per million output; a receipt runs on the order of 1–2k
+input tokens plus the image (up to ~4.8k tokens at full resolution). Switch the
+model string in `server/index.mjs` if you want to trade accuracy for cost at
+volume — that is a business decision, not a default worth making for you.
+
+Accepts JPEG, PNG, GIF, WebP and PDF, up to 12 MB.
+
 ## Layout
 
 ```
@@ -127,13 +168,16 @@ app/                     Expo Router screens
     drivers.tsx          Roster + carrier details
     ledger.tsx           Recorded costs and revenue
   brief.tsx              The convoy brief
+  scan.tsx               Photograph a document → review → apply
   add-cost.tsx           Unplanned cost entry
   truck/[id].tsx         Truck cost basis editor
   driver/[id].tsx        Driver, CDL, endorsements, assignment
 
+server/index.mjs         Extraction proxy — the only thing holding an API key
+
 src/
   calc/                  costs · hos · risk · fleet
-  services/              routing · fuel · weather · traffic · restrictions
+  services/              routing · fuel · weather · traffic · restrictions · documents
   data/                  states · geo · defaults · incidents
   store/                 persisted fleet + ledger, ephemeral trip draft
   ui/                    theme and components

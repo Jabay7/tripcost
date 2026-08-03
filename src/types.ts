@@ -93,6 +93,89 @@ export type TripInput = {
 };
 
 // ---------------------------------------------------------------------------
+// Document capture — photograph a bill, get a report entry
+// ---------------------------------------------------------------------------
+
+/**
+ * What kind of paper this is.
+ *
+ * The distinction that matters: an invoice or tow bill is money already spent
+ * and belongs in the ledger. A BOL or rate confirmation describes a load that
+ * has not run yet and belongs in the trip planner. Same camera, two very
+ * different destinations.
+ */
+export type DocumentKind =
+  | 'expense' // Invoice, tow bill, repair order, lumper receipt, parts bill
+  | 'fuel' // Fuel receipt — has gallons and price per gallon
+  | 'scale' // CAT scale ticket — has axle weights
+  | 'load' // BOL, rate confirmation, load tender
+  | 'unknown';
+
+export type ExtractedLineItem = {
+  description: string;
+  amount: number;
+};
+
+/** Money already spent. Flows to the ledger and to the trip total. */
+export type ExtractedExpense = {
+  vendor: string;
+  /** ISO date, or empty when the document does not show one. */
+  date: string;
+  total: number;
+  /** Best-guess mapping onto the app's own categories. */
+  category: AddedCostCategory;
+  invoiceNumber: string;
+  lineItems: ExtractedLineItem[];
+  /** Gallons and price per gallon, when this is a fuel receipt. */
+  gallons: number | null;
+  pricePerGallon: number | null;
+  /** True when the document itself indicates a broker or shipper pays it back. */
+  looksReimbursable: boolean;
+};
+
+/** A load that has not run yet. Flows into the trip planner. */
+export type ExtractedLoad = {
+  originCity: string;
+  originState: string;
+  destinationCity: string;
+  destinationState: string;
+  /** Linehaul rate if the document states one. Rate confirmations do; BOLs do not. */
+  rate: number | null;
+  rateMode: 'flat' | 'per-mile' | null;
+  weightLbs: number | null;
+  commodity: string;
+  equipment: EquipmentType | null;
+  /** ISO timestamps when the document gives a date and time. */
+  pickupBy: string;
+  deliverBy: string;
+  /** BOL number, PO number, or load number — whatever the document carries. */
+  referenceNumber: string;
+  hazmat: HazmatClass | null;
+  /** Broker or shipper name. */
+  broker: string;
+};
+
+export type ExtractionConfidence = 'high' | 'medium' | 'low';
+
+export type ExtractedDocument = {
+  kind: DocumentKind;
+  confidence: ExtractionConfidence;
+  /** One line a driver can read to confirm the right paper was captured. */
+  summary: string;
+  expense: ExtractedExpense | null;
+  load: ExtractedLoad | null;
+  /**
+   * Anything the extractor could not read or is unsure about. Shown to the
+   * driver before anything is written — a smudged total belongs here, not
+   * silently in the books.
+   */
+  warnings: string[];
+  /** Which provider produced this, and whether it was live. */
+  provider: string;
+  live: boolean;
+};
+
+// ---------------------------------------------------------------------------
 // Optional costs — load-specific, driver's call
 // ---------------------------------------------------------------------------
 
