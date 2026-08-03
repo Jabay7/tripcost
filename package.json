@@ -16,7 +16,7 @@
     "check:alerts": "tsx scripts/check-alerts.ts",
     "icons": "node scripts/make-icons.mjs",
     "deploy:web": "node scripts/deploy-web.mjs",
-    "server": "node server/index.mjs",
+    "server": "node --env-file-if-exists=.env server/index.mjs",
     "preflight": "npm run typecheck && npm test && npm run verify",
     "fix-deps": "expo install --fix"
   },

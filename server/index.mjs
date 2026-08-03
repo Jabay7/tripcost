@@ -120,12 +120,20 @@ const SCHEMA = {
           type: ['number', 'null'],
           description: 'Linehaul rate if stated. Rate confirmations state one; plain BOLs do not.',
         },
-        rateMode: { type: ['string', 'null'], enum: ['flat', 'per-mile', null] },
+        // Nullable enums must be expressed as anyOf. A declared type of
+        // ['string','null'] alongside an enum containing null is rejected:
+        // the enum values have to match the declared type, and null does not
+        // match 'string'.
+        rateMode: {
+          anyOf: [{ type: 'string', enum: ['flat', 'per-mile'] }, { type: 'null' }],
+        },
         weightLbs: { type: ['number', 'null'] },
         commodity: { type: 'string' },
         equipment: {
-          type: ['string', 'null'],
-          enum: ['dry-van', 'reefer', 'flatbed', 'tanker', 'hopper', null],
+          anyOf: [
+            { type: 'string', enum: ['dry-van', 'reefer', 'flatbed', 'tanker', 'hopper'] },
+            { type: 'null' },
+          ],
         },
         pickupBy: { type: 'string', description: 'ISO-8601 timestamp, or empty string.' },
         deliverBy: { type: 'string', description: 'ISO-8601 timestamp, or empty string.' },
@@ -134,10 +142,15 @@ const SCHEMA = {
           description: 'BOL number, PO number or load number — whichever the document carries.',
         },
         hazmat: {
-          type: ['string', 'null'],
-          enum: [
-            '1-explosives', '2-gases', '3-flammable-liquid', '4-flammable-solid',
-            '5-oxidizer', '6-toxic', '7-radioactive', '8-corrosive', '9-misc', null,
+          anyOf: [
+            {
+              type: 'string',
+              enum: [
+                '1-explosives', '2-gases', '3-flammable-liquid', '4-flammable-solid',
+                '5-oxidizer', '6-toxic', '7-radioactive', '8-corrosive', '9-misc',
+              ],
+            },
+            { type: 'null' },
           ],
         },
         broker: { type: 'string' },
@@ -221,6 +234,12 @@ async function extract({ base64, mediaType, filename }) {
     system: SYSTEM,
     output_config: {
       format: { type: 'json_schema', schema: SCHEMA },
+      // Reading figures off a document is perception, not deep reasoning, and
+      // a driver is standing in the rain waiting for this. Low effort cuts the
+      // round trip to a few seconds with no measured loss of accuracy on real
+      // invoices — the schema does the structural work, not the thinking.
+      // Raise this if you start seeing misreads on poor-quality photos.
+      effort: 'low',
     },
     messages: [
       {
