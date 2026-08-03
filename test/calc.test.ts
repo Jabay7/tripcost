@@ -25,6 +25,8 @@ import {
   MockTraffic,
   MockWeather,
 } from '../src/services';
+import { decodeFlexiblePolyline } from '../src/services/routing';
+import { AlertSeenSet, type RoadAlert } from '../src/services/alerts';
 import type { AddedCost, Driver, LedgerEntry, TripInput, Truck } from '../src/types';
 
 const DALLAS = cityById('dal')!;
@@ -652,6 +654,102 @@ describe('fleet report', () => {
       Math.abs(bucketSum - r.combined.totalCost) < 1,
       `buckets ${bucketSum.toFixed(2)} vs total ${r.combined.totalCost.toFixed(2)}`,
     );
+  });
+});
+
+describe('en-route alerts', () => {
+  const mk = (over: Partial<RoadAlert> = {}): RoadAlert => ({
+    id: 'a1',
+    event: 'Blizzard Warning',
+    headline: 'Blizzard Warning in effect',
+    description: '',
+    severity: 'Severe',
+    urgency: 'Immediate',
+    areaDesc: 'Laramie County',
+    effective: '',
+    expires: '',
+    milesAhead: 0,
+    critical: true,
+    ...over,
+  });
+
+  it('announces each alert once, then stops', () => {
+    const seen = new AlertSeenSet();
+    const a = mk();
+
+    assert.equal(seen.takeNew([a]).length, 1, 'first sighting announces');
+    assert.equal(seen.takeNew([a]).length, 0, 'second poll stays quiet');
+    assert.equal(seen.takeNew([a]).length, 0);
+  });
+
+  it('announces a re-issued alert again after it clears', () => {
+    const seen = new AlertSeenSet();
+    const a = mk();
+
+    seen.takeNew([a]);
+    // The alert expires and drops off the active feed.
+    seen.prune([]);
+    assert.equal(seen.size, 0, 'cleared alerts are forgotten');
+    // NWS re-issues it later — the driver must hear about it again.
+    assert.equal(seen.takeNew([a]).length, 1);
+  });
+
+  it('keeps tracking alerts that are still active', () => {
+    const seen = new AlertSeenSet();
+    const a = mk({ id: 'still-on' });
+    const b = mk({ id: 'gone' });
+
+    seen.takeNew([a, b]);
+    seen.prune([a]);
+    assert.equal(seen.size, 1);
+    assert.equal(seen.takeNew([a]).length, 0, 'still-active alert does not re-announce');
+  });
+
+  it('handles several alerts independently', () => {
+    const seen = new AlertSeenSet();
+    const first = seen.takeNew([mk({ id: 'x' }), mk({ id: 'y' })]);
+    assert.equal(first.length, 2);
+
+    const second = seen.takeNew([mk({ id: 'y' }), mk({ id: 'z' })]);
+    assert.deepEqual(
+      second.map((a) => a.id),
+      ['z'],
+      'only the genuinely new one announces',
+    );
+  });
+});
+
+describe('HERE flexible polyline', () => {
+  // The reference vector from HERE's own flexible-polyline repository. This is
+  // the only part of the HERE adapter testable without a key, and the part most
+  // likely to be subtly wrong — a decoder that is off by a factor of ten still
+  // returns plausible-looking coordinates, and every weather lookup on the
+  // route would land in the wrong place.
+  it('decodes the reference vector exactly', () => {
+    const decoded = decodeFlexiblePolyline('BFoz5xJ67i1B1B7PzIhaxL7Y');
+    assert.deepEqual(
+      decoded.map((p) => [p.lat, p.lon]),
+      [
+        [50.10228, 8.69821],
+        [50.10201, 8.69567],
+        [50.10063, 8.6915],
+        [50.09878, 8.68752],
+      ],
+    );
+  });
+
+  it('returns nothing rather than garbage for unusable input', () => {
+    assert.deepEqual(decodeFlexiblePolyline(''), []);
+    // Characters outside the encoding alphabet must not produce coordinates.
+    assert.deepEqual(decodeFlexiblePolyline('!!!!'), []);
+  });
+
+  it('produces coordinates inside the continental US for a US polyline', () => {
+    const decoded = decodeFlexiblePolyline('BFoz5xJ67i1B1B7PzIhaxL7Y');
+    for (const p of decoded) {
+      assert.ok(Math.abs(p.lat) <= 90, `latitude out of range: ${p.lat}`);
+      assert.ok(Math.abs(p.lon) <= 180, `longitude out of range: ${p.lon}`);
+    }
   });
 });
 

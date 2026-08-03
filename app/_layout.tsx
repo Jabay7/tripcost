@@ -26,6 +26,7 @@ export default function RootLayout() {
           <Stack.Screen name="add-cost" options={{ title: 'Add Cost', presentation: 'modal' }} />
           <Stack.Screen name="scan" options={{ title: 'Scan Document' }} />
           <Stack.Screen name="driver-brief" options={{ title: 'Driver Brief' }} />
+          <Stack.Screen name="enroute" options={{ title: 'En-Route Watch' }} />
           <Stack.Screen name="truck/[id]" options={{ title: 'Truck' }} />
           <Stack.Screen name="driver/[id]" options={{ title: 'Driver' }} />
         </Stack>

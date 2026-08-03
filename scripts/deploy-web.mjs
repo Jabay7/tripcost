@@ -54,10 +54,17 @@ writeFileSync(
 console.log('\nPublishing to gh-pages\n');
 rmSync(join(dist, '.git'), { recursive: true, force: true });
 
-const git = (...args) => run('git', args, { cwd: dist });
+// shell:false so arguments containing spaces survive intact — passing
+// `user.name=TripCost Deploy` through a shell splits it into two arguments and
+// git fails with an unhelpful error.
+const git = (...args) =>
+  execFileSync('git', args, { stdio: 'inherit', cwd: dist, shell: false });
+
 git('init', '-b', 'gh-pages');
+git('config', 'user.name', 'TripCost Deploy');
+git('config', 'user.email', 'deploy@local');
 git('add', '-A');
-git('-c', 'user.name=TripCost Deploy', '-c', 'user.email=deploy@local', 'commit', '-q', '-m', 'Deploy web build');
+git('commit', '-q', '-m', 'Deploy web build');
 git('remote', 'add', 'origin', `https://github.com/${REPO}.git`);
 git('push', '-f', 'origin', 'gh-pages');
 

@@ -323,6 +323,11 @@ export default function DriverBriefScreen() {
       ) : null}
 
       <Button title="Send to driver" onPress={send} />
+      <Button
+        title="Start en-route weather watch"
+        variant="secondary"
+        onPress={() => router.push('/enroute')}
+      />
       <Button title="Back to full brief" variant="ghost" onPress={() => router.back()} />
     </Screen>
   );
