@@ -19,7 +19,7 @@
  * source history.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const REPO = process.env.DEPLOY_REPO ?? 'Jabay7/tripcost';
@@ -31,9 +31,83 @@ const run = (cmd, args, opts = {}) =>
 
 console.log(`\nBuilding web bundle with baseUrl=${BASE}\n`);
 rmSync(dist, { recursive: true, force: true });
-run('npx', ['expo', 'export', '--platform', 'web'], {
-  env: { ...process.env, EXPO_DEPLOY_BASE_URL: BASE },
-});
+
+/**
+ * Expo auto-loads .env and inlines every EXPO_PUBLIC_* value into the bundle.
+ * On a public site that is a published secret: anyone can read the JS and burn
+ * the quota. Strip them for the web deploy — the app falls back to the offline
+ * estimate and labels itself OFFLINE, which is honest and costs nothing.
+ *
+ * Device builds are different: EAS injects keys per profile (see eas.json), and
+ * an app binary is meaningfully harder to mine than a URL. Set
+ * DEPLOY_ALLOW_PUBLIC_KEYS=1 to override, but understand what you are shipping.
+ */
+const buildEnv = { ...process.env, EXPO_DEPLOY_BASE_URL: BASE };
+if (!process.env.DEPLOY_ALLOW_PUBLIC_KEYS) {
+  // Deleting the variables from process.env is NOT enough — Expo reads .env
+  // off disk itself, so a stripped environment still ships the key. Only
+  // EXPO_NO_DOTENV stops the file being read at all.
+  buildEnv.EXPO_NO_DOTENV = '1';
+  for (const k of Object.keys(buildEnv)) {
+    if (k.startsWith('EXPO_PUBLIC_') && /KEY|TOKEN|SECRET/i.test(k)) delete buildEnv[k];
+  }
+  console.log('Public bundle: .env disabled, EXPO_PUBLIC_*KEY stripped.\n');
+}
+
+// --clear is load-bearing, not hygiene. Metro inlines EXPO_PUBLIC_* values at
+// transform time and caches the result, so a build that once embedded a key
+// keeps serving it from cache even after the key is removed from the
+// environment. Without this the secret scan below passes and the bundle still
+// ships the key.
+run('npx', ['expo', 'export', '--platform', 'web', '--clear'], { env: buildEnv });
+
+/**
+ * Trust, then verify. The stripping above is easy to defeat with one careless
+ * change, and the failure is silent — a published key looks exactly like a
+ * working deploy. So grep the built bundle for anything key-shaped and refuse
+ * to publish if it is there.
+ */
+if (!process.env.DEPLOY_ALLOW_PUBLIC_KEYS) {
+  // Read .env off disk rather than trusting process.env — npm does not load it,
+  // so a scanner that only looks at the environment finds nothing to look for
+  // and reports a false clean. The file is the thing that leaks.
+  const suspects = [];
+  for (const [k, v] of Object.entries(process.env)) {
+    if (/KEY|TOKEN|SECRET/i.test(k) && typeof v === 'string' && v.length >= 16) suspects.push([k, v]);
+  }
+  const envPath = join(process.cwd(), '.env');
+  if (existsSync(envPath)) {
+    for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq < 1) continue;
+      const name = line.slice(0, eq).trim();
+      const value = line.slice(eq + 1).trim();
+      if (value.length >= 16) suspects.push([name, value]);
+    }
+  }
+  if (suspects.length === 0) {
+    console.warn('Secret scan: nothing to check for — no keys found in env or .env.');
+  }
+
+  const bundleDir = join(dist, '_expo', 'static', 'js', 'web');
+  const files = existsSync(bundleDir) ? readdirSync(bundleDir) : [];
+  const leaks = [];
+
+  for (const file of files) {
+    const text = readFileSync(join(bundleDir, file), 'utf8');
+    for (const [name, value] of suspects) {
+      if (text.includes(value)) leaks.push(`${name} in ${file}`);
+    }
+  }
+
+  if (leaks.length) {
+    console.error('\nREFUSING TO PUBLISH — secrets found in the bundle:');
+    for (const l of leaks) console.error(`  ${l}`);
+    console.error('\nRotate the exposed key, then fix the build before deploying.\n');
+    process.exit(1);
+  }
+  console.log('Secret scan: clean.\n');
+}
 
 if (!existsSync(join(dist, 'index.html'))) {
   console.error('Export produced no index.html — aborting.');

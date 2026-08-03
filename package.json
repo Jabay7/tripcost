@@ -18,7 +18,8 @@
     "deploy:web": "node scripts/deploy-web.mjs",
     "server": "node --env-file-if-exists=.env server/index.mjs",
     "preflight": "npm run typecheck && npm test && npm run verify",
-    "fix-deps": "expo install --fix"
+    "fix-deps": "expo install --fix",
+    "check:routing": "tsx --env-file-if-exists=.env scripts/check-routing.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
