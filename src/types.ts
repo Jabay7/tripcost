@@ -79,15 +79,41 @@ export type TripInput = {
   reeferSetPointF: number | null;
   oversize: boolean;
 
-  /** Driver expects to pay a lumper at the receiver. */
-  lumperExpected: boolean;
-  lumperEstimate: number;
+  /**
+   * Load-specific costs the driver explicitly turned on. Nothing here is
+   * charged unless selected — see `data/optionalCosts.ts`.
+   */
+  optionalCosts: OptionalCostSelection[];
 
   /** Appointment the load must be delivered by, ISO-8601. Null = no hard deadline. */
   deliverBy: string | null;
 
   /** Which truck in the fleet is running this load. */
   truckId?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Optional costs — load-specific, driver's call
+// ---------------------------------------------------------------------------
+
+export type OptionalCostKey =
+  | 'lumper'
+  | 'escort'
+  | 'oversize-permits'
+  | 'hazmat-compliance'
+  | 'washout'
+  | 'chains'
+  | 'securement'
+  | 'reserved-parking'
+  | 'motel'
+  | 'extra-weigh';
+
+/** One line of the "anything else on this load?" checklist. */
+export type OptionalCostSelection = {
+  key: OptionalCostKey;
+  enabled: boolean;
+  /** Editable. Interpreted per the definition's mode (flat, per-mile, …). */
+  amount: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -523,6 +549,15 @@ export type RestrictionReport = {
 // Calculated output
 // ---------------------------------------------------------------------------
 
+/**
+ * Which bucket a cost belongs to from the driver's point of view.
+ *
+ *  fixed     Happens no matter what — diesel, tolls, tires, the truck payment.
+ *  optional  Load-specific and chosen on the checklist — pilot car, lumper.
+ *  incident  Already went wrong and was entered by hand — a tow, a tire.
+ */
+export type CostGroup = 'fixed' | 'optional' | 'incident';
+
 export type CostLine = {
   key: string;
   label: string;
@@ -530,6 +565,7 @@ export type CostLine = {
   /** Where the number came from, shown in the brief so nothing is a black box. */
   basis: string;
   category: CostCategory;
+  group: CostGroup;
   /** Driver pays this before settlement, so it must be floated in cash. */
   outOfPocket: boolean;
   /** Reimbursable by broker/shipper on most contracts. */
@@ -561,6 +597,12 @@ export type CostReport = {
   lines: CostLine[];
   revenue: RevenueLine[];
   totalCost: number;
+  /** Cost that happens regardless — fuel, tolls, wear, overhead. */
+  fixedTotal: number;
+  /** Cost the driver added from the load checklist. */
+  optionalTotal: number;
+  /** Unplanned spend already entered by hand. */
+  incidentTotal: number;
   /** Revenue you can bank on. Excludes contingent accessorials. */
   committedRevenue: number;
   potentialRevenue: number;

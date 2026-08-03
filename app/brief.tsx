@@ -326,26 +326,43 @@ export default function BriefScreen() {
       {/* --- Costs ---------------------------------------------------------- */}
       <Section title="Cost breakdown" subtitle={`${usd(cost.totalCost)} total · ${usdCents(cost.costPerMile)}/mi`}>
         <Card>
-          {cost.lines
-            .slice()
-            .sort((a, b) => b.amount - a.amount)
-            .map((line: CostLine) => (
-              <View key={line.key} style={s.costLine}>
-                <View style={s.costLineHead}>
-                  <Text style={s.costLabel}>{line.label}</Text>
-                  <Text style={s.costValue}>{usd(line.amount)}</Text>
-                </View>
-                <Bar fraction={line.amount / maxLine} color={categoryColor[line.category] ?? colors.textDim} />
-                <Text style={s.costBasis}>{line.basis}</Text>
-                {line.outOfPocket || line.reimbursable ? (
-                  <View style={s.tagRow}>
-                    {line.outOfPocket ? <Pill text="OUT OF POCKET" color={colors.amber} /> : null}
-                    {line.reimbursable ? <Pill text="REIMBURSABLE" color={colors.green} /> : null}
-                  </View>
-                ) : null}
-              </View>
-            ))}
-          <View style={s.hr} />
+          <TileRow>
+            <StatTile label="Fixed" value={usd(cost.fixedTotal)} sub="happens anyway" />
+            <StatTile
+              label="You added"
+              value={usd(cost.optionalTotal)}
+              sub="this load"
+              color={cost.optionalTotal > 0 ? colors.accent : undefined}
+            />
+            <StatTile
+              label="Unplanned"
+              value={usd(cost.incidentTotal)}
+              sub="already spent"
+              color={cost.incidentTotal > 0 ? colors.red : undefined}
+            />
+          </TileRow>
+        </Card>
+
+        <CostGroupCard
+          title="Fixed — happens whether you like it or not"
+          lines={cost.lines.filter((l) => l.group === 'fixed')}
+          maxLine={maxLine}
+        />
+        <CostGroupCard
+          title="Optional — you selected these for this load"
+          lines={cost.lines.filter((l) => l.group === 'optional')}
+          maxLine={maxLine}
+          empty="Nothing added. No pilot car, no lumper, no permits on this run."
+          accent={colors.accent}
+        />
+        <CostGroupCard
+          title="Unplanned — already went wrong"
+          lines={cost.lines.filter((l) => l.group === 'incident')}
+          maxLine={maxLine}
+          accent={colors.red}
+        />
+
+        <Card>
           <Row label="Total cost" value={usd(cost.totalCost)} bold valueColor={colors.text} />
         </Card>
       </Section>
@@ -427,8 +444,70 @@ export default function BriefScreen() {
   );
 }
 
+/**
+ * One block of the cost breakdown. Splitting fixed from optional is the point:
+ * a driver looking at a thin load needs to see instantly which costs they could
+ * have avoided and which were never up for negotiation.
+ */
+function CostGroupCard({
+  title,
+  lines,
+  maxLine,
+  empty,
+  accent,
+}: {
+  title: string;
+  lines: CostLine[];
+  maxLine: number;
+  empty?: string;
+  accent?: string;
+}) {
+  if (lines.length === 0 && !empty) return null;
+
+  const subtotal = lines.reduce((sum, l) => sum + l.amount, 0);
+
+  return (
+    <Card accent={accent}>
+      <View style={s.groupHead}>
+        <Text style={s.groupTitle}>{title}</Text>
+        <Text style={s.groupTotal}>{usd(subtotal)}</Text>
+      </View>
+
+      {lines.length === 0 ? (
+        <Dim>{empty}</Dim>
+      ) : (
+        lines
+          .slice()
+          .sort((a, b) => b.amount - a.amount)
+          .map((line) => (
+            <View key={line.key} style={s.costLine}>
+              <View style={s.costLineHead}>
+                <Text style={s.costLabel}>{line.label}</Text>
+                <Text style={s.costValue}>{usd(line.amount)}</Text>
+              </View>
+              <Bar
+                fraction={line.amount / maxLine}
+                color={categoryColor[line.category] ?? colors.textDim}
+              />
+              <Text style={s.costBasis}>{line.basis}</Text>
+              {line.outOfPocket || line.reimbursable ? (
+                <View style={s.tagRow}>
+                  {line.outOfPocket ? <Pill text="OUT OF POCKET" color={colors.amber} /> : null}
+                  {line.reimbursable ? <Pill text="REIMBURSABLE" color={colors.green} /> : null}
+                </View>
+              ) : null}
+            </View>
+          ))
+      )}
+    </Card>
+  );
+}
+
 const s = StyleSheet.create({
   bluf: { borderRadius: radius.lg, borderWidth: 1, padding: space.lg, gap: space.sm },
+  groupHead: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
+  groupTitle: { ...type.h3, color: colors.text, flex: 1, lineHeight: 20 },
+  groupTotal: { ...type.h3, color: colors.text, fontVariant: ['tabular-nums'] },
   blufHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   blufLevel: { fontSize: 32, fontWeight: '900', letterSpacing: 2 },
   blufScore: { ...type.tiny, color: colors.textDim, marginLeft: 'auto' },

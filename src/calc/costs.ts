@@ -1,11 +1,12 @@
 import { TRIP_COSTS, CONTINGENCY_BY_RISK } from '../data/defaults';
+import { optionalCostByKey, resolveOptionalAmount } from '../data/optionalCosts';
 import type {
   AddedCost,
+  CostGroup,
   CostLine,
   CostReport,
   FuelReport,
   HosPlan,
-  RestrictionReport,
   RevenueLine,
   Route,
   TripInput,
@@ -34,7 +35,6 @@ export function computeCosts(
   profile: TruckProfile,
   fuel: FuelReport,
   hos: HosPlan,
-  restrictions: RestrictionReport,
   riskLevel: 'GREEN' | 'AMBER' | 'RED',
   addedCosts: AddedCost[] = [],
 ): CostReport {
@@ -48,7 +48,7 @@ export function computeCosts(
     amount: number,
     basis: string,
     category: CostLine['category'],
-    opts: { outOfPocket?: boolean; reimbursable?: boolean } = {},
+    opts: { outOfPocket?: boolean; reimbursable?: boolean; group?: CostGroup } = {},
   ) => {
     if (amount <= 0.005) return;
     lines.push({
@@ -57,6 +57,7 @@ export function computeCosts(
       amount: money(amount),
       basis,
       category,
+      group: opts.group ?? 'fixed',
       outOfPocket: opts.outOfPocket ?? false,
       reimbursable: opts.reimbursable ?? false,
     });
@@ -171,7 +172,7 @@ export function computeCosts(
     { outOfPocket: true },
   );
 
-  // --- Trip-specific spend -------------------------------------------------
+  // --- Trip-specific spend that always happens -----------------------------
   add(
     'tolls',
     'Tolls',
@@ -181,97 +182,35 @@ export function computeCosts(
     { outOfPocket: true, reimbursable: true },
   );
 
-  if (hos.nightsOut > 0) {
-    add(
-      'parking',
-      'Truck parking',
-      hos.nightsOut * TRIP_COSTS.parkingPerNight,
-      `${hos.nightsOut} night${hos.nightsOut > 1 ? 's' : ''} × $${TRIP_COSTS.parkingPerNight} reserved space`,
-      'trip',
-      { outOfPocket: true },
-    );
-  }
-
-  const weighs = input.hazmat || input.oversize || input.grossWeightLbs > 78000 ? 2 : 1;
   add(
     'scale',
-    'Scale tickets',
-    TRIP_COSTS.catScaleWeigh + (weighs - 1) * TRIP_COSTS.catScaleReweigh,
-    weighs > 1
-      ? `Weigh $${TRIP_COSTS.catScaleWeigh} + reweigh $${TRIP_COSTS.catScaleReweigh} — heavy or placarded load`
-      : `One CAT scale weigh @ $${TRIP_COSTS.catScaleWeigh}`,
+    'Scale ticket',
+    TRIP_COSTS.catScaleWeigh,
+    `One CAT scale weigh @ $${TRIP_COSTS.catScaleWeigh}`,
     'trip',
     { outOfPocket: true },
   );
 
-  if (input.lumperExpected) {
-    const lumper = input.lumperEstimate > 0 ? input.lumperEstimate : TRIP_COSTS.lumperTypical;
-    add(
-      'lumper',
-      'Lumper fee',
-      lumper,
-      'Paid at the receiver, out of your pocket. Get a receipt — this is reimbursable but you float it.',
-      'trip',
-      { outOfPocket: true, reimbursable: true },
-    );
+  // --- Optional costs the driver selected for this load --------------------
+  // Nothing here is charged unless it was turned on. A load that needs no pilot
+  // car is never quietly billed for one.
+  const optionalCtx = {
+    totalMiles,
+    nights: hos.nightsOut,
+    states: route.states.length,
+  };
+  for (const sel of input.optionalCosts) {
+    if (!sel.enabled) continue;
+    const def = optionalCostByKey(sel.key);
+    if (!def) continue;
+
+    const { total, basis } = resolveOptionalAmount(def, sel.amount, optionalCtx);
+    add(`opt-${def.key}`, def.label, total, basis, def.category, {
+      outOfPocket: def.outOfPocket,
+      reimbursable: def.reimbursable,
+      group: 'optional',
+    });
   }
-
-  if (input.equipment === 'reefer') {
-    add(
-      'washout',
-      'Trailer washout',
-      TRIP_COSTS.reeferWashout,
-      'Required between food-grade loads. Keep the ticket.',
-      'trip',
-      { outOfPocket: true, reimbursable: true },
-    );
-  }
-
-  if (input.oversize) {
-    add(
-      'escort',
-      'Pilot / escort car',
-      totalMiles * TRIP_COSTS.escortPerMile,
-      `${Math.round(totalMiles)} mi × $${TRIP_COSTS.escortPerMile}/mi`,
-      'trip',
-      { outOfPocket: true, reimbursable: true },
-    );
-  }
-
-  // --- Compliance ----------------------------------------------------------
-  if (input.hazmat) {
-    add(
-      'hazmat',
-      'Hazmat compliance',
-      TRIP_COSTS.hazmatPerTrip,
-      'Placards, shipping papers, segregation check, share of annual hazmat registration',
-      'compliance',
-      { outOfPocket: true },
-    );
-  }
-
-  const permitCost = restrictions.restrictions
-    .filter((r) => r.kind === 'oversize-permit' || r.kind === 'weight-limit')
-    .reduce((s, r) => s + r.costUsd, 0);
-  add(
-    'permits',
-    'Trip permits',
-    permitCost,
-    'Oversize / overweight permits, per state crossed',
-    'compliance',
-    { outOfPocket: true, reimbursable: true },
-  );
-
-  const chainCost = restrictions.restrictions
-    .filter((r) => r.kind === 'chain-law')
-    .reduce((s, r) => s + r.costUsd, 0);
-  add(
-    'chains',
-    'Chain allowance',
-    chainCost,
-    'Amortized chains plus the time to hang them in chain-law states',
-    'compliance',
-  );
 
   // --- Money off the top ---------------------------------------------------
   // Fuel surcharge uses the industry-standard peg against a base diesel price.
@@ -318,7 +257,7 @@ export function computeCosts(
         .filter(Boolean)
         .join(' ') || 'Entered by the user.',
       'incident',
-      { outOfPocket: c.outOfPocket, reimbursable: c.reimbursable },
+      { outOfPocket: c.outOfPocket, reimbursable: c.reimbursable, group: 'incident' },
     );
   }
 
@@ -375,6 +314,9 @@ export function computeCosts(
   });
 
   // --- Totals --------------------------------------------------------------
+  const sumGroup = (g: CostGroup) =>
+    money(lines.filter((l) => l.group === g).reduce((s, l) => s + l.amount, 0));
+
   const totalCost = money(lines.reduce((s, l) => s + l.amount, 0));
   const committedRevenue = money(
     revenue.filter((r) => !r.contingent).reduce((s, r) => s + r.amount, 0),
@@ -389,6 +331,9 @@ export function computeCosts(
     lines,
     revenue,
     totalCost,
+    fixedTotal: sumGroup('fixed'),
+    optionalTotal: sumGroup('optional'),
+    incidentTotal: sumGroup('incident'),
     committedRevenue,
     potentialRevenue,
     netProfit,

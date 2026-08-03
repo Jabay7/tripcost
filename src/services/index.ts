@@ -84,7 +84,7 @@ export async function buildTripBrief(
   ]);
 
   const risk = assessRisk(route, input, weather, traffic, restrictions, hos);
-  const cost = computeCosts(route, input, profile, fuel, hos, restrictions, risk.level, addedCosts);
+  const cost = computeCosts(route, input, profile, fuel, hos, risk.level, addedCosts);
 
   const sources = [
     { service: 'Routing', provider: services.routing.name, live: services.routing.live },

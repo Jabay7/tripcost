@@ -9,6 +9,7 @@
 import { buildFleetReport } from '../src/calc/fleet';
 import { DEFAULT_PROFILE } from '../src/data/defaults';
 import { cityById } from '../src/data/geo';
+import { withOptional } from '../src/data/optionalCosts';
 import { buildTripBrief } from '../src/services';
 import type { AddedCost, Driver, LedgerEntry, TripInput, Truck } from '../src/types';
 
@@ -32,8 +33,14 @@ async function main() {
     hazmat: null,
     reeferSetPointF: 34,
     oversize: false,
-    lumperExpected: true,
-    lumperEstimate: 320,
+    // The driver's answers on the Extras step: this receiver charges a lumper,
+    // the trailer needs a washout, and it is January so chains are going.
+    optionalCosts: withOptional({
+      lumper: 320,
+      washout: true,
+      chains: true,
+      'reserved-parking': true,
+    }),
     deliverBy: '2026-01-16T14:00:00.000Z',
   };
 

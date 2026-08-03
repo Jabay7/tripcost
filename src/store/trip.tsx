@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { cityById } from '../data/geo';
+import { defaultOptionalCosts } from '../data/optionalCosts';
 import { buildTripBrief } from '../services';
-import type { AddedCost, TripBrief, TripInput, TruckProfile } from '../types';
+import type { AddedCost, OptionalCostKey, TripBrief, TripInput, TruckProfile } from '../types';
 import { newId } from './store';
 
 /**
@@ -34,8 +35,7 @@ export function emptyTrip(): TripInput {
     hazmat: null,
     reeferSetPointF: null,
     oversize: false,
-    lumperExpected: false,
-    lumperEstimate: 250,
+    optionalCosts: defaultOptionalCosts(),
     deliverBy: null,
   };
 }
@@ -62,6 +62,8 @@ type TripStore = {
   error: string | null;
 
   patchTrip: (patch: Partial<TripInput>) => void;
+  toggleOptional: (key: OptionalCostKey) => void;
+  setOptionalAmount: (key: OptionalCostKey, amount: number) => void;
   resetTrip: () => void;
   addCost: (c: AddedCost) => void;
   removeCost: (id: string) => void;
@@ -80,6 +82,22 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
   const patchTrip = useCallback((patch: Partial<TripInput>) => {
     setTrip((t) => ({ ...t, ...patch }));
+  }, []);
+
+  const toggleOptional = useCallback((key: OptionalCostKey) => {
+    setTrip((t) => ({
+      ...t,
+      optionalCosts: t.optionalCosts.map((o) =>
+        o.key === key ? { ...o, enabled: !o.enabled } : o,
+      ),
+    }));
+  }, []);
+
+  const setOptionalAmount = useCallback((key: OptionalCostKey, amount: number) => {
+    setTrip((t) => ({
+      ...t,
+      optionalCosts: t.optionalCosts.map((o) => (o.key === key ? { ...o, amount } : o)),
+    }));
   }, []);
 
   const resetTrip = useCallback(() => {
@@ -122,13 +140,29 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       building,
       error,
       patchTrip,
+      toggleOptional,
+      setOptionalAmount,
       resetTrip,
       addCost,
       removeCost,
       clearCosts,
       generate,
     }),
-    [trip, addedCosts, brief, building, error, patchTrip, resetTrip, addCost, removeCost, clearCosts, generate],
+    [
+      trip,
+      addedCosts,
+      brief,
+      building,
+      error,
+      patchTrip,
+      toggleOptional,
+      setOptionalAmount,
+      resetTrip,
+      addCost,
+      removeCost,
+      clearCosts,
+      generate,
+    ],
   );
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;

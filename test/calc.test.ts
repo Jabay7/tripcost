@@ -7,6 +7,11 @@ import { assessRisk } from '../src/calc/risk';
 import { DEFAULT_PROFILE } from '../src/data/defaults';
 import { cityById, haversineMiles } from '../src/data/geo';
 import {
+  defaultOptionalCosts,
+  OPTIONAL_COSTS,
+  withOptional,
+} from '../src/data/optionalCosts';
+import {
   buildTripBrief,
   MockFuel,
   MockRestrictions,
@@ -34,8 +39,7 @@ function trip(overrides: Partial<TripInput> = {}): TripInput {
     hazmat: null,
     reeferSetPointF: null,
     oversize: false,
-    lumperExpected: false,
-    lumperEstimate: 250,
+    optionalCosts: defaultOptionalCosts(),
     deliverBy: null,
     ...overrides,
   };
@@ -172,7 +176,10 @@ describe('cost engine', () => {
   });
 
   it('never reports cash-to-float above total cost', async () => {
-    const b = await buildTripBrief(trip({ lumperExpected: true }), DEFAULT_PROFILE);
+    const b = await buildTripBrief(
+      trip({ optionalCosts: withOptional({ lumper: 300 }) }),
+      DEFAULT_PROFILE,
+    );
     assert.ok(b.cost.cashToFloat > 0);
     assert.ok(b.cost.cashToFloat <= b.cost.totalCost + 0.01);
   });
@@ -214,6 +221,123 @@ describe('cost engine', () => {
     assert.ok(good.cost.netProfit > 0, 'a $3.50/mi load should profit');
     assert.ok(bad.cost.netProfit < 0, 'a $1.10/mi load should lose money');
     assert.ok(bad.cost.revenuePerMile < bad.cost.breakEvenRatePerMile);
+  });
+});
+
+describe('optional costs', () => {
+  it('charges nothing that was not selected', async () => {
+    const b = await buildTripBrief(trip(), DEFAULT_PROFILE);
+
+    assert.equal(b.cost.optionalTotal, 0);
+    assert.ok(!b.cost.lines.some((l) => l.group === 'optional'));
+    // The classic quiet-billing bugs: a pilot car or lumper nobody asked for.
+    assert.ok(!b.cost.lines.some((l) => l.label.includes('escort')));
+    assert.ok(!b.cost.lines.some((l) => l.label.includes('Lumper')));
+  });
+
+  it('does not bill an oversize load for an escort unless it was chosen', async () => {
+    const b = await buildTripBrief(trip({ oversize: true }), DEFAULT_PROFILE);
+    assert.equal(b.cost.optionalTotal, 0, 'oversize alone must not add cost');
+
+    const withEscort = await buildTripBrief(
+      trip({ oversize: true, optionalCosts: withOptional({ escort: 2.25 }) }),
+      DEFAULT_PROFILE,
+    );
+    assert.ok(withEscort.cost.optionalTotal > 0);
+    assert.ok(withEscort.cost.totalCost > b.cost.totalCost);
+  });
+
+  it('does not bill a reefer for a washout unless it was chosen', async () => {
+    const b = await buildTripBrief(
+      trip({ equipment: 'reefer', reeferSetPointF: 34 }),
+      DEFAULT_PROFILE,
+    );
+    assert.ok(!b.cost.lines.some((l) => l.key === 'opt-washout'));
+    // Reefer *fuel* is not optional — the unit runs regardless.
+    assert.ok(b.cost.lines.some((l) => l.key === 'reefer-fuel' && l.group === 'fixed'));
+  });
+
+  it('prices a per-mile optional against the real route distance', async () => {
+    const b = await buildTripBrief(
+      trip({ oversize: true, optionalCosts: withOptional({ escort: 2 }) }),
+      DEFAULT_PROFILE,
+    );
+    const escort = b.cost.lines.find((l) => l.key === 'opt-escort')!;
+    assert.ok(
+      Math.abs(escort.amount - b.route.totalMiles * 2) < 1,
+      `escort ${escort.amount} should be 2 × ${b.route.totalMiles} miles`,
+    );
+  });
+
+  it('prices a per-night optional against nights actually spent out', async () => {
+    const b = await buildTripBrief(
+      trip({
+        destination: LOS_ANGELES,
+        optionalCosts: withOptional({ 'reserved-parking': 25 }),
+      }),
+      DEFAULT_PROFILE,
+    );
+    const parking = b.cost.lines.find((l) => l.key === 'opt-reserved-parking')!;
+    assert.ok(b.hos.nightsOut > 0);
+    assert.equal(parking.amount, b.hos.nightsOut * 25);
+  });
+
+  it('prices a per-state optional against states actually crossed', async () => {
+    const b = await buildTripBrief(
+      trip({ oversize: true, optionalCosts: withOptional({ 'oversize-permits': 40 }) }),
+      DEFAULT_PROFILE,
+    );
+    const permits = b.cost.lines.find((l) => l.key === 'opt-oversize-permits')!;
+    assert.equal(permits.amount, b.route.states.length * 40);
+  });
+
+  it('splits the total into fixed, optional and unplanned without losing money', async () => {
+    const b = await buildTripBrief(
+      trip({ optionalCosts: withOptional({ lumper: 250, washout: true }) }),
+      DEFAULT_PROFILE,
+      [
+        {
+          id: 'i1',
+          label: 'Tow',
+          amount: 900,
+          category: 'tow',
+          note: '',
+          outOfPocket: true,
+          reimbursable: false,
+          incurredAt: '2026-03-10T12:00:00.000Z',
+        },
+      ],
+    );
+
+    assert.ok(b.cost.fixedTotal > 0);
+    assert.ok(b.cost.optionalTotal > 0);
+    assert.equal(b.cost.incidentTotal, 900);
+    assert.ok(
+      Math.abs(b.cost.fixedTotal + b.cost.optionalTotal + b.cost.incidentTotal - b.cost.totalCost) < 0.05,
+      'the three groups must add up to the total',
+    );
+  });
+
+  it('keeps fuel, tolls and the truck payment in the fixed group', async () => {
+    const b = await buildTripBrief(trip(), DEFAULT_PROFILE);
+    for (const key of ['fuel', 'tolls', 'fixed', 'tires', 'maintenance']) {
+      const line = b.cost.lines.find((l) => l.key === key);
+      assert.ok(line, `expected a ${key} line`);
+      assert.equal(line.group, 'fixed', `${key} must not be optional`);
+    }
+  });
+
+  it('suggests the right extras for the load without enabling them', () => {
+    const oversize = trip({ oversize: true });
+    const suggested = OPTIONAL_COSTS.filter((o) => o.suggest(oversize)).map((o) => o.key);
+    assert.ok(suggested.includes('escort'));
+    assert.ok(suggested.includes('oversize-permits'));
+
+    const flatbed = trip({ equipment: 'flatbed' });
+    assert.ok(OPTIONAL_COSTS.filter((o) => o.suggest(flatbed)).map((o) => o.key).includes('securement'));
+
+    // Suggestion is advisory only — the defaults are all off.
+    assert.ok(defaultOptionalCosts().every((o) => !o.enabled));
   });
 });
 
