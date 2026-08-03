@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { buildDriverBrief, driverBriefToText } from '../src/calc/driverBrief';
+import { isRtl, LANGUAGES, type Lang } from '../src/data/i18n';
 import { useActiveTruck, useStore } from '../src/store/store';
 import { useTrip } from '../src/store/trip';
 import type { WeatherSeverity } from '../src/types';
@@ -54,6 +55,7 @@ export default function DriverBriefScreen() {
   const { fleet } = useStore();
   const truck = useActiveTruck();
   const [notes, setNotes] = useState('');
+  const [lang, setLang] = useState<Lang>('en');
 
   const driverBrief = useMemo(
     () =>
@@ -87,7 +89,7 @@ export default function DriverBriefScreen() {
     try {
       await Share.share({
         title: `Driver brief — ${b.origin} to ${b.destination}`,
-        message: driverBriefToText(b),
+        message: driverBriefToText(b, lang),
       });
     } catch {
       // The user dismissed the share sheet. Nothing to recover.
@@ -121,6 +123,40 @@ export default function DriverBriefScreen() {
           </Text>
         </View>
       </Card>
+
+      {/* --- Language ---------------------------------------------------------- */}
+      <Section title="Send it in" subtitle="The driver's copy is translated — this screen stays in English">
+        <View style={s.langRow}>
+          {LANGUAGES.map((l) => {
+            const on = l.code === lang;
+            return (
+              <Pressable
+                key={l.code}
+                onPress={() => setLang(l.code)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={[s.lang, on && s.langOn]}
+              >
+                <Text style={[s.langNative, on && { color: colors.text }]}>{l.native}</Text>
+                <Text style={s.langLabel}>{l.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {lang !== 'en' ? (
+          <Card>
+            <Label>Preview of what they receive</Label>
+            <Text style={[s.preview, isRtl(lang) && s.previewRtl]}>
+              {driverBriefToText(b, lang).split('\n').slice(0, 14).join('\n')}
+              {'\n…'}
+            </Text>
+            <Dim>
+              Place names, unit numbers, road numbers like I-80 and weather-service wording stay in
+              English on purpose — the driver has to match those against road signs and paperwork.
+            </Dim>
+          </Card>
+        ) : null}
+      </Section>
 
       {/* --- Dispatch notes --------------------------------------------------- */}
       <Section title="Note from dispatch" subtitle="Optional — appears at the top of what they receive">
@@ -371,4 +407,29 @@ const s = StyleSheet.create({
   warnText: { ...type.small, color: colors.amber, lineHeight: 18 },
 
   dispatch: { ...type.h1, color: colors.blue, fontVariant: ['tabular-nums'] },
+
+  langRow: { flexDirection: 'row', gap: space.sm },
+  lang: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: space.sm,
+  },
+  langOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
+  langNative: { ...type.h3, color: colors.textDim },
+  langLabel: { ...type.tiny, color: colors.textFaint, marginTop: 2 },
+
+  preview: {
+    ...type.small,
+    color: colors.text,
+    fontFamily: 'monospace',
+    lineHeight: 19,
+    marginTop: space.xs,
+  },
+  previewRtl: { writingDirection: 'rtl', textAlign: 'right' },
 });

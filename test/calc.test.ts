@@ -28,6 +28,7 @@ import {
 import { decodeFlexiblePolyline } from '../src/services/routing';
 import { AlertSeenSet, type RoadAlert } from '../src/services/alerts';
 import { WALKTHROUGH } from '../src/data/walkthrough';
+import { t } from '../src/data/i18n';
 import type { AddedCost, Driver, LedgerEntry, TripInput, Truck } from '../src/types';
 
 const DALLAS = cityById('dal')!;
@@ -960,6 +961,112 @@ describe('driver brief', () => {
     assert.equal(driver.legalOnTime, false);
     const text = driverBriefToText(driver);
     assert.ok(/DO NOT RUN ILLEGAL/i.test(text));
+  });
+
+  it('translates the shared text and still hides the money', async () => {
+    const { full, driver } = await build();
+
+    for (const lang of ['es', 'ar'] as const) {
+      const text = driverBriefToText(driver, lang);
+      const dict = t(lang);
+
+      assert.ok(text.includes(dict.driverBrief), `${lang}: missing translated heading`);
+      assert.ok(text.includes(dict.theRun), `${lang}: missing translated run section`);
+      assert.ok(text.includes(dict.fuel), `${lang}: missing translated fuel section`);
+      assert.ok(text.includes(dict.fillHere), `${lang}: fuel advice not translated`);
+
+      // Translation must not become a leak channel.
+      for (const value of [full.cost.totalCost, full.cost.netProfit, full.cost.committedRevenue]) {
+        const whole = String(Math.round(value));
+        assert.ok(whole.length < 3 || !text.includes(whole), `${lang} leaked ${whole}`);
+      }
+    }
+  });
+
+  it('keeps English headings out of a translated brief', async () => {
+    const { driver } = await build();
+    const es = driverBriefToText(driver, 'es');
+    for (const english of ['DRIVER BRIEF', 'THE RUN', 'BOTTOM LINE', 'TIMELINE']) {
+      assert.ok(!es.includes(english), `Spanish brief still contains "${english}"`);
+    }
+  });
+
+  it('leaves road numbers, states and units in English', async () => {
+    const { driver } = await build();
+    const ar = driverBriefToText(driver, 'ar');
+
+    // A driver matches these against road signs and paperwork. Translating them
+    // would actively make the brief harder to use.
+    for (const state of driver.states) {
+      assert.ok(ar.includes(state), `state code ${state} should stay in Latin script`);
+    }
+    assert.ok(ar.includes(driver.origin), 'place names stay in English');
+  });
+
+  it('marks Arabic as right-to-left so message apps render it correctly', async () => {
+    const { driver } = await build();
+    const ar = driverBriefToText(driver, 'ar');
+    const es = driverBriefToText(driver, 'es');
+
+    // U+202B / U+202C — without these a line starting with "TX" flips the whole
+    // paragraph to left-to-right in most messaging clients.
+    assert.ok(ar.startsWith('‫') && ar.endsWith('‬'), 'Arabic needs RTL embedding marks');
+    assert.ok(!es.startsWith('‫'), 'Spanish must not be marked RTL');
+  });
+
+  it('defaults to English when no language is given', async () => {
+    const { driver } = await build();
+    assert.equal(driverBriefToText(driver), driverBriefToText(driver, 'en'));
+  });
+
+  it('translates the safety-critical line in every language', async () => {
+    const { driver } = await build({ deliverBy: '2026-03-11T00:00:00.000Z' });
+    assert.equal(driver.legalOnTime, false);
+
+    for (const lang of ['en', 'es', 'ar'] as const) {
+      const text = driverBriefToText(driver, lang);
+      assert.ok(
+        text.includes(t(lang).doNotRunIllegal),
+        `${lang}: the do-not-run-illegal warning must be translated, not dropped`,
+      );
+    }
+  });
+
+  it('never lets a translated label collide with its value', async () => {
+    // With an appointment set, so every padded field is present to check.
+    const { driver } = await build({ deliverBy: '2026-03-14T00:00:00.000Z' });
+
+    for (const lang of ['en', 'es'] as const) {
+      const d = t(lang);
+      const labels = [d.distance, d.states, d.depart, d.eta, d.appointment, d.equipment, d.weight];
+      const lines = driverBriefToText(driver, lang).split('\n');
+
+      for (const label of labels) {
+        const line = lines.find((l) => l.startsWith(label));
+        assert.ok(line, `${lang}: no line for "${label}"`);
+        // Padded label column: there must be whitespace between the label and
+        // its value, or a long translation has run into its own number.
+        assert.ok(
+          /\s/.test(line.charAt(label.length)),
+          `${lang}: "${label}" ran into its value — "${line.slice(0, 44)}"`,
+        );
+      }
+    }
+  });
+
+  it('has no missing keys in any language', () => {
+    const enKeys = Object.keys(t('en')).sort();
+    for (const lang of ['es', 'ar'] as const) {
+      assert.deepEqual(Object.keys(t(lang)).sort(), enKeys, `${lang} dictionary is out of sync`);
+      // An untranslated value that is byte-identical to English is usually an
+      // oversight rather than a decision.
+      const same = enKeys.filter((k) => {
+        const a = (t('en') as Record<string, unknown>)[k];
+        const b = (t(lang) as Record<string, unknown>)[k];
+        return typeof a === 'string' && a === b && a.length > 3;
+      });
+      assert.deepEqual(same, [], `${lang} left these untranslated: ${same.join(', ')}`);
+    }
   });
 
   it('renders shareable text a phone can display', async () => {
