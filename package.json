@@ -14,6 +14,7 @@
     "bench": "tsx scripts/bench.ts",
     "check:weather": "tsx scripts/check-weather.ts",
     "icons": "node scripts/make-icons.mjs",
+    "deploy:web": "node scripts/deploy-web.mjs",
     "server": "node server/index.mjs",
     "preflight": "npm run typecheck && npm test && npm run verify",
     "fix-deps": "expo install --fix"
