@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "TripCost",
+    "slug": "tripcost",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "tripcost",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "backgroundColor": "#0B0F14",
+    "splash": {
+      "backgroundColor": "#0B0F14",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tripcost.app"
+    },
+    "android": {
+      "package": "com.tripcost.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0F14"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}
