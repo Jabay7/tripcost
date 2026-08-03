@@ -180,6 +180,23 @@ export default function DriversScreen() {
           carry no operating cost, but the truck they left still owes its payment.
         </Body>
       </Card>
+
+      <Card accent={colors.amber}>
+        <Label>What this app is not</Label>
+        <Body>
+          TripCost is a planning tool. It is not an ELD, not a system of record for hours of
+          service, and not legal, tax, or financial advice.
+        </Body>
+        <Dim>
+          The hours-of-service timeline models the 11-hour driving limit, the 14-hour window, the
+          30-minute break and the 10-hour reset. It does not model sleeper-berth splits, the 34-hour
+          restart, or the short-haul and adverse-conditions exceptions — all of which give a driver
+          more time, so the plan is the conservative case. Your ELD is the authority on your
+          available hours, and the driver is the authority on whether a load can be run safely.
+          Routing is a straight-line estimate and is not truck-legal until a truck router is
+          connected: verify bridge clearances, weight limits and restricted roads before dispatch.
+        </Dim>
+      </Card>
     </Screen>
   );
 }

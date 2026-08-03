@@ -93,6 +93,88 @@ export type TripInput = {
 };
 
 // ---------------------------------------------------------------------------
+// Driver brief — the copy that leaves the office
+// ---------------------------------------------------------------------------
+
+export type DriverFuelStateEntry = {
+  state: StateCode;
+  stateName: string;
+  /** Price per gallon. The one money figure a driver needs, to pick a stop. */
+  pricePerGal: number;
+  miles: number;
+  cheapest: boolean;
+  avoid: boolean;
+};
+
+export type DriverFuelPlan = {
+  /** Miles on a full tank at this truck's real economy. */
+  rangeMiles: number;
+  tankGallons: number;
+  mpg: number;
+  byState: DriverFuelStateEntry[];
+  plannedStops: { atMile: number; at: string }[];
+  advice: string[];
+};
+
+/**
+ * What the driver receives.
+ *
+ * Deliberately has no rate, revenue, cost, margin, or cost-per-mile field.
+ * Those are not omitted from the UI — they are absent from the type, so no
+ * screen or export can leak them. Built by `calc/driverBrief.ts`.
+ */
+export type DriverBrief = {
+  generatedAt: string;
+  carrier: string;
+  dotNumber: string;
+  dispatchName: string;
+  dispatchPhone: string;
+  unitNumber: string;
+  driverNames: string[];
+  dispatchNotes: string;
+
+  origin: string;
+  destination: string;
+  stops: string[];
+  totalMiles: number;
+  deadheadMiles: number;
+  states: StateCode[];
+  equipment: EquipmentType;
+  grossWeightLbs: number;
+  hazmat: HazmatClass | null;
+  reeferSetPointF: number | null;
+  oversize: boolean;
+
+  departAt: string;
+  eta: string;
+  deliverBy: string | null;
+  legalOnTime: boolean;
+  /** Null when there is no appointment to measure against. */
+  slackHours: number | null;
+  drivingHours: number;
+  totalElapsedHours: number;
+  tripDays: number;
+  nightsOut: number;
+  schedule: HosStop[];
+  cycleWarnings: string[];
+
+  fuel: DriverFuelPlan;
+  weather: WeatherPoint[];
+  worstWeather: WeatherSeverity;
+  incidents: Incident[];
+  totalDelayMinutes: number;
+  restrictions: Restriction[];
+
+  riskLevel: 'GREEN' | 'AMBER' | 'RED';
+  riskScore: number;
+  riskFactors: RiskFactor[];
+  bottomLine: string;
+
+  sources: { service: string; provider: string; live: boolean }[];
+  containsMockData: boolean;
+};
+
+// ---------------------------------------------------------------------------
 // Document capture — photograph a bill, get a report entry
 // ---------------------------------------------------------------------------
 

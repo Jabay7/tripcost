@@ -414,7 +414,8 @@ export default function BriefScreen() {
       </Section>
 
       {/* --- Actions -------------------------------------------------------- */}
-      <Button title="Log this trip to the ledger" onPress={logToLedger} />
+      <Button title="Driver copy — no rates or costs" onPress={() => router.push('/driver-brief')} />
+      <Button title="Log this trip to the ledger" variant="secondary" onPress={logToLedger} />
       <Button title="Back to trip" variant="ghost" onPress={() => router.back()} />
 
       {/* --- Provenance ----------------------------------------------------- */}

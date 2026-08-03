@@ -6,6 +6,7 @@
  * Useful for eyeballing whether the numbers are sane after changing the model —
  * the unit tests prove the math holds together, this shows what it looks like.
  */
+import { buildDriverBrief, driverBriefToText } from '../src/calc/driverBrief';
 import { buildFleetReport } from '../src/calc/fleet';
 import { DEFAULT_PROFILE } from '../src/data/defaults';
 import { cityById } from '../src/data/geo';
@@ -252,6 +253,35 @@ async function main() {
     console.log('\n  Read on the numbers:');
     for (const i of rep.insights) console.log(`    ▸ ${i}`);
   }
+
+  // -------------------------------------------------------------------------
+  // Driver copy — the same trip with every financial figure removed
+  // -------------------------------------------------------------------------
+  rule("DRIVER COPY (what gets sent to the driver)");
+  const driverCopy = buildDriverBrief(brief, {
+    fleet: { company: { name: 'Sample Carrier', dotNumber: '1234567', mcNumber: '', contactName: 'Dispatch', contactPhone: '(555) 555-0100', contactEmail: '' }, trucks, drivers },
+    truck: trucks[0],
+    drivers: [drivers[0]],
+    dispatchNotes: 'Lumper is cash only. Call before you arrive.',
+  });
+  console.log(driverBriefToText(driverCopy));
+
+  rule('LEAK CHECK');
+  const payload = JSON.stringify(driverCopy) + driverBriefToText(driverCopy);
+  const secrets: [string, number][] = [
+    ['total cost', cost.totalCost],
+    ['revenue', cost.committedRevenue],
+    ['net profit', cost.netProfit],
+    ['cash to float', cost.cashToFloat],
+  ];
+  let leaked = false;
+  for (const [label, value] of secrets) {
+    const whole = String(Math.round(value));
+    const found = whole.length >= 3 && payload.includes(whole);
+    if (found) leaked = true;
+    console.log(`  ${found ? 'LEAKED ' : 'clean  '} ${label.padEnd(14)} ${whole}`);
+  }
+  console.log(`  ${leaked ? '*** DRIVER COPY LEAKS FINANCIALS ***' : 'No dispatch financials reached the driver copy.'}`);
 
   rule('DATA SOURCES');
   for (const s of brief.sources) {

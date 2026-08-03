@@ -34,6 +34,15 @@ and DOT medical expiry dates are tracked with warnings at 60 and 30 days.
 the truck is in the shop. Enter it and it flows into the trip total, the cash you
 have to float, and the fleet report — as an actual, not an estimate.
 
+**A driver copy with the money taken out.** From any brief, one tap produces the
+driver's version — route, hours-of-service timeline, weather, closures,
+restrictions, and a fuel plan telling them which state to fill in and which to
+buy minimum through. No rate, no cost, no margin. The separation is structural:
+`buildDriverBrief` returns a different object rather than hiding fields, so
+nothing downstream can render a figure the driver should not see. A test asserts
+the dispatch financials never appear in the payload or the shared text. Send it
+over SMS, WhatsApp or email from the share sheet.
+
 **Scan the paperwork instead of typing it.** Photograph a tow bill, invoice, fuel
 receipt or scale ticket and the vendor, date, total and line items come off the
 page into the ledger. Photograph a rate confirmation or BOL and it prefills the
@@ -52,13 +61,32 @@ npm start          # then press w for web, or scan the QR code with Expo Go
 Other commands:
 
 ```bash
-npm run typecheck  # tsc, strict
-npm test           # 48 unit tests over the cost, HOS, weather and fleet math
-npm run verify     # prints a full brief + fleet report to the console
-npm run web        # web only
+npm run preflight     # typecheck + tests + end-to-end verify. Run before shipping.
+npm run typecheck     # tsc, strict
+npm test              # 70 unit tests over cost, HOS, weather, fleet and driver-copy math
+npm run verify        # prints a full brief, driver copy, leak check and fleet report
+npm run bench         # where the time actually goes
+npm run check:weather # is NWS reachable and returning sane data?
+npm run icons         # regenerate the app icon set
+npm run server        # extraction server for document scanning
 ```
 
-Deploying to phones uses EAS: `npx eas build --platform ios` (or `android`).
+## Building for phones
+
+```bash
+npm i -g eas-cli && eas login
+eas build:configure
+eas build --profile preview --platform android   # installable APK
+eas build --profile production --platform all    # store builds
+```
+
+`eas.json` ships with three profiles: `development` (dev client), `preview`
+(internal APK / ad-hoc IPA — the one to hand a driver for testing), and
+`production` (app bundle for the stores). Set `EXPO_PUBLIC_NWS_USER_AGENT` in
+each profile to your own contact address before building.
+
+Store submission needs accounts you have to own: Apple Developer ($99/yr) and
+Google Play ($25 once). `eas submit` handles the upload once those exist.
 
 ---
 
@@ -98,11 +126,17 @@ today and a documented path to live. Swapping one does not touch anything else.
 
 | Service | Now | Live path |
 |---|---|---|
+| **Weather** | **LIVE — api.weather.gov** | Already on. Free, no key. Set `EXPO_PUBLIC_NWS_USER_AGENT` to your contact address |
 | Routing | Great-circle × circuity factor | HERE Routing v8 `transportMode=truck`, or Trimble/PC\*Miler for truck-legal |
 | Fuel | EIA regional snapshot, spread by state diesel tax | EIA API v2 — free, key only. Per-station needs a commercial feed |
-| Weather | Climatological model by latitude and month | api.weather.gov — free, no key |
 | Traffic | Corridor congestion model | HERE Traffic Incidents v7 + state 511 feeds |
 | Restrictions | State reference table | FMCSA hazmat route registry + a commercial truck-attribute map |
+
+Weather is live out of the box: forecasts are fetched per route segment for the
+time the truck is projected to be there, in parallel, with `/points` responses
+cached by grid cell. A segment that fails falls back to the model for that
+segment only, so one flaky request costs a data point rather than the brief.
+Check it with `npm run check:weather`.
 
 The brief labels every section LIVE or OFFLINE and refuses to pretend otherwise —
 there is a banner on the brief saying the numbers are directionally right but not

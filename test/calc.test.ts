@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { computeCosts } from '../src/calc/costs';
+import { buildDriverBrief, driverBriefToText } from '../src/calc/driverBrief';
 import { buildFleetReport, complianceAlerts, driverName, periodBounds } from '../src/calc/fleet';
 import { planHos } from '../src/calc/hos';
 import { assessRisk } from '../src/calc/risk';
@@ -651,6 +652,157 @@ describe('fleet report', () => {
       Math.abs(bucketSum - r.combined.totalCost) < 1,
       `buckets ${bucketSum.toFixed(2)} vs total ${r.combined.totalCost.toFixed(2)}`,
     );
+  });
+});
+
+describe('driver brief', () => {
+  const fleet = {
+    company: {
+      name: 'Test Carrier',
+      dotNumber: '1234567',
+      mcNumber: 'MC-000',
+      contactName: 'Dispatch',
+      contactPhone: '(555) 555-0100',
+      contactEmail: '',
+    },
+    trucks: [] as Truck[],
+    drivers: [] as Driver[],
+  };
+
+  const build = async (over: Partial<TripInput> = {}) => {
+    // A high rate and a heavy optional load, so any leak would be obvious.
+    const t = trip({ rate: 4.25, rateMode: 'per-mile', destination: LOS_ANGELES, ...over });
+    const b = await buildTripBrief(t, DEFAULT_PROFILE);
+    const truck = makeTestTruck('118');
+    const driver = makeTestDriver('d1', { assignedTruckId: truck.id, firstName: 'Sam', lastName: 'Reed' });
+    return {
+      trip: t,
+      full: b,
+      driver: buildDriverBrief(b, {
+        fleet: { ...fleet, trucks: [truck], drivers: [driver] },
+        truck,
+        drivers: [driver],
+        dispatchNotes: 'Gate code 4417.',
+      }),
+    };
+  };
+
+  it('carries no financial fields at all', async () => {
+    const { driver } = await build();
+
+    // Split camelCase into words so "generatedAt" does not read as containing
+    // "rate". Matching whole words is the point — a field called `rateMode`
+    // must fail, a field called `generatedAt` must not.
+    const words = (key: string) => key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/\s+/);
+
+    // "total" is deliberately absent — totalMiles and totalDelayMinutes are
+    // operational. Only words that are financial on their own belong here.
+    const BANNED = new Set([
+      'cost', 'costs', 'revenue', 'profit', 'margin', 'rate', 'linehaul',
+      'pay', 'billed', 'invoice', 'cash', 'cpm', 'surcharge', 'settlement',
+    ]);
+
+    for (const key of Object.keys(driver)) {
+      const hit = words(key).find((w) => BANNED.has(w));
+      assert.ok(
+        !hit,
+        `driver brief exposes "${key}" — the word "${hit}" is financial and must not reach a driver`,
+      );
+    }
+  });
+
+  it('does not leak the trip economics into the serialized payload', async () => {
+    const { full, driver } = await build();
+    const json = JSON.stringify(driver);
+
+    // Every headline money figure from the dispatch brief, rounded the way it
+    // would plausibly appear. None may show up in the driver's copy.
+    const secrets = [
+      full.cost.totalCost,
+      full.cost.committedRevenue,
+      full.cost.netProfit,
+      full.cost.cashToFloat,
+      full.cost.fixedTotal,
+    ];
+
+    for (const value of secrets) {
+      const whole = String(Math.round(value));
+      assert.ok(
+        whole.length < 3 || !json.includes(whole),
+        `driver brief leaked ${whole} — it appears in the payload`,
+      );
+    }
+  });
+
+  it('keeps the same leak guarantee in the shared text', async () => {
+    const { full, driver } = await build();
+    const text = driverBriefToText(driver);
+
+    for (const value of [full.cost.totalCost, full.cost.netProfit, full.cost.committedRevenue]) {
+      const whole = String(Math.round(value));
+      assert.ok(whole.length < 3 || !text.includes(whole), `shared text leaked ${whole}`);
+    }
+    // The rate is $4.25/mi — neither form of it may appear.
+    assert.ok(!text.includes('4.25'), 'shared text leaked the linehaul rate');
+    assert.ok(!/\$\/mi/.test(text), 'shared text should not carry a per-mile rate');
+  });
+
+  it('still gives the driver everything they need to run the load', async () => {
+    const { driver } = await build();
+
+    assert.ok(driver.totalMiles > 0);
+    assert.ok(driver.states.length > 0);
+    assert.ok(driver.schedule.length > 0, 'HOS timeline');
+    assert.ok(driver.weather.length > 0, 'weather along route');
+    assert.ok(driver.fuel.byState.length > 0, 'fuel prices by state');
+    assert.ok(driver.fuel.rangeMiles > 0, 'tank range');
+    assert.ok(driver.fuel.advice.length > 0, 'fuel advice');
+    assert.ok(driver.bottomLine.length > 0, 'go/no-go');
+    assert.equal(driver.carrier, 'Test Carrier');
+    assert.equal(driver.dispatchPhone, '(555) 555-0100');
+    assert.ok(driver.driverNames.includes('Sam Reed'));
+    assert.ok(driver.dispatchNotes.includes('Gate code'));
+  });
+
+  it('marks the cheapest state to fill and flags an expensive one', async () => {
+    // Texas to Pennsylvania: the widest diesel-tax spread in the country.
+    const { driver } = await build({
+      origin: cityById('hou')!,
+      destination: cityById('phi')!,
+    });
+
+    const cheapest = driver.fuel.byState.filter((f) => f.cheapest);
+    assert.equal(cheapest.length, 1, 'exactly one cheapest state');
+    assert.equal(
+      driver.fuel.byState[0].state,
+      cheapest[0].state,
+      'cheapest sorts first so the driver reads it before anything else',
+    );
+    assert.ok(
+      driver.fuel.advice.some((a) => a.includes(cheapest[0].state)),
+      'advice names where to fill',
+    );
+    assert.ok(driver.fuel.byState.some((f) => f.avoid), 'the expensive end is flagged');
+  });
+
+  it('tells the driver plainly when the load cannot run legally on time', async () => {
+    const { driver } = await build({ deliverBy: '2026-03-11T00:00:00.000Z' });
+    assert.equal(driver.legalOnTime, false);
+    const text = driverBriefToText(driver);
+    assert.ok(/DO NOT RUN ILLEGAL/i.test(text));
+  });
+
+  it('renders shareable text a phone can display', async () => {
+    const { driver } = await build();
+    const text = driverBriefToText(driver);
+
+    assert.ok(text.startsWith('DRIVER BRIEF'));
+    assert.ok(text.includes('THE RUN'));
+    assert.ok(text.includes('FUEL'));
+    assert.ok(text.includes('TIMELINE'));
+    assert.ok(text.includes('Gate code 4417.'), 'dispatch note reaches the driver');
+    // Long enough to be useful, short enough to survive a text message thread.
+    assert.ok(text.length > 400 && text.length < 8000, `unexpected length ${text.length}`);
   });
 });
 

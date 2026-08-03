@@ -11,6 +11,11 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "verify": "tsx scripts/verify.ts",
+    "bench": "tsx scripts/bench.ts",
+    "check:weather": "tsx scripts/check-weather.ts",
+    "icons": "node scripts/make-icons.mjs",
+    "server": "node server/index.mjs",
+    "preflight": "npm run typecheck && npm test && npm run verify",
     "fix-deps": "expo install --fix"
   },
   "dependencies": {
@@ -34,6 +39,7 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "@types/react": "~19.2.2",
     "tsx": "^4.23.5",
     "typescript": "~6.0.3"

@@ -6,7 +6,7 @@ import { MockFuel, type FuelProvider } from './fuel';
 import { MockRestrictions, type RestrictionProvider } from './restrictions';
 import { MockRouting, type RoutingProvider } from './routing';
 import { MockTraffic, type TrafficProvider } from './traffic';
-import { MockWeather, type WeatherProvider } from './weather';
+import { MockWeather, NwsWeather, type WeatherProvider } from './weather';
 
 export * from './fuel';
 export * from './restrictions';
@@ -44,6 +44,28 @@ export const MOCK_SERVICES: ServiceBundle = {
   weather: new MockWeather(),
   traffic: new MockTraffic(),
   restrictions: new MockRestrictions(),
+};
+
+/**
+ * How the app identifies itself to the National Weather Service. NWS asks that
+ * callers identify their application and a contact address so they can reach
+ * you if a request pattern causes them trouble.
+ */
+const NWS_USER_AGENT =
+  process.env.EXPO_PUBLIC_NWS_USER_AGENT ?? 'TripCost (support@example.com)';
+
+/**
+ * What the app actually runs with.
+ *
+ * NWS weather is free and needs no key, so it is live by default — one of the
+ * five feeds is real out of the box. The rest stay modeled until keys exist,
+ * and the brief labels each one honestly either way.
+ *
+ * Set EXPO_PUBLIC_NWS_USER_AGENT to your own contact address before shipping.
+ */
+export const DEFAULT_SERVICES: ServiceBundle = {
+  ...MOCK_SERVICES,
+  weather: new NwsWeather(NWS_USER_AGENT),
 };
 
 /**

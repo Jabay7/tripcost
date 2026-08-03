@@ -146,29 +146,238 @@ export class MockWeather implements WeatherProvider {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Live: National Weather Service
+// ---------------------------------------------------------------------------
+
+/** NWS grid cells are ~2.5 km. Rounding to 2 decimals (~1 km) is a safe key. */
+const gridKey = (lat: number, lon: number) => `${lat.toFixed(2)},${lon.toFixed(2)}`;
+
+type NwsPeriod = {
+  startTime: string;
+  endTime: string;
+  temperature: number;
+  temperatureUnit: string;
+  windSpeed: string | null;
+  windGust: string | null;
+  shortForecast: string;
+  probabilityOfPrecipitation?: { value: number | null };
+};
+
+/**
+ * Parses an NWS wind string. They come as "10 mph" or "10 to 15 mph" — take
+ * the top of the range, which is the number that matters to a high-profile
+ * vehicle.
+ */
+function parseWindMph(s: string | null | undefined): number {
+  if (!s) return 0;
+  const numbers = s.match(/\d+/g);
+  if (!numbers) return 0;
+  return Math.max(...numbers.map(Number));
+}
+
+/** Maps an NWS `shortForecast` phrase onto the app's precipitation types. */
+function parsePrecip(shortForecast: string, tempF: number): WeatherPoint['precip'] {
+  const f = shortForecast.toLowerCase();
+  if (/freezing|ice|sleet/.test(f)) return 'ice';
+  if (/wintry mix|rain and snow|snow and rain/.test(f)) return 'mixed';
+  if (/snow|flurr|blizzard/.test(f)) return tempF > 34 ? 'mixed' : 'snow';
+  if (/rain|shower|thunder|drizzle/.test(f)) return 'rain';
+  return 'none';
+}
+
+/**
+ * NWS hourly forecasts do not carry visibility, so it is inferred from the
+ * conditions rather than invented. Fog and heavy frozen precipitation are what
+ * actually shut a driver down.
+ */
+function inferVisibilityMi(shortForecast: string, precip: WeatherPoint['precip']): number {
+  const f = shortForecast.toLowerCase();
+  if (/dense fog/.test(f)) return 0.25;
+  if (/fog|haze|smoke/.test(f)) return 1.5;
+  if (/blizzard|heavy snow/.test(f)) return 0.5;
+  if (precip === 'snow') return 2;
+  if (precip === 'ice' || precip === 'mixed') return 3;
+  if (/heavy rain|thunderstorm/.test(f)) return 3;
+  if (precip === 'rain') return 6;
+  return 10;
+}
+
 /**
  * Live weather from the National Weather Service.
  *
- * NWS is free, needs no key, and only asks for a descriptive User-Agent:
+ * NWS is free, needs no key, and only asks for a descriptive User-Agent
+ * identifying the application. Three calls per route segment:
  *
- *   GET https://api.weather.gov/points/{lat},{lon}
- *      -> .properties.forecastHourly  and  .properties.forecastGridData
- *   GET {forecastHourly}
- *      -> periods[] with temperature, windSpeed, shortForecast, probabilityOfPrecipitation
- *   GET https://api.weather.gov/alerts/active?point={lat},{lon}
- *      -> features[].properties.headline / .event / .severity
+ *   GET /points/{lat},{lon}          -> the forecast office + grid URLs
+ *   GET {properties.forecastHourly}  -> hourly periods
+ *   GET /alerts/active?point={lat},{lon}
  *
- * Pick the hourly period whose `startTime` brackets the truck's ETA at that
- * segment, then map `severity` from the alert `event` field. Coverage is US
- * only; for Canadian legs use Environment Canada or a commercial provider.
+ * Two things make this usable on a phone on a cell connection:
+ *
+ *  - Segments are fetched in parallel, and `/points` responses are cached in
+ *    memory keyed by grid cell. A route that crosses the same state twice pays
+ *    for one lookup, not two.
+ *  - A segment that fails falls back to the offline model for that segment
+ *    only. One flaky request must not cost the driver the whole brief, so the
+ *    result degrades point by point rather than all at once.
+ *
+ * Coverage is the US and its territories. A Canadian leg needs Environment
+ * Canada or a commercial provider.
  */
 export class NwsWeather implements WeatherProvider {
   readonly name = 'National Weather Service';
   readonly live = true;
 
-  constructor(private readonly userAgent: string) {}
+  private readonly pointCache = new Map<string, string | null>();
+  private readonly fallback = new MockWeather();
 
-  async forecast(): Promise<WeatherReport> {
-    throw new Error('NwsWeather is not wired yet. Implement the api.weather.gov fetch.');
+  constructor(
+    /** e.g. "TripCost (dispatch@yourcarrier.com)" — NWS asks you to identify. */
+    private readonly userAgent: string,
+    private readonly timeoutMs = 8000,
+  ) {}
+
+  private async getJson<T>(url: string): Promise<T> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': this.userAgent, Accept: 'application/geo+json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+      return (await res.json()) as T;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Resolves the hourly-forecast URL for a coordinate, caching by grid cell. */
+  private async hourlyUrl(lat: number, lon: number): Promise<string | null> {
+    const key = gridKey(lat, lon);
+    const cached = this.pointCache.get(key);
+    if (cached !== undefined) return cached;
+
+    try {
+      const data = await this.getJson<{ properties?: { forecastHourly?: string } }>(
+        `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+      );
+      const url = data.properties?.forecastHourly ?? null;
+      this.pointCache.set(key, url);
+      return url;
+    } catch {
+      // Cache the miss too — a point outside NWS coverage will not start
+      // working on a retry, and re-asking costs the driver time.
+      this.pointCache.set(key, null);
+      return null;
+    }
+  }
+
+  private async alertsFor(lat: number, lon: number): Promise<string[]> {
+    try {
+      const data = await this.getJson<{
+        features?: { properties?: { event?: string; headline?: string; severity?: string } }[];
+      }>(`https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`);
+
+      return (data.features ?? [])
+        .map((f) => f.properties?.headline || f.properties?.event || '')
+        .filter((s): s is string => s.length > 0)
+        .slice(0, 4); // A brief the driver will actually read.
+    } catch {
+      return [];
+    }
+  }
+
+  async forecast(route: Route, etaAtMile: (mile: number) => Date): Promise<WeatherReport> {
+    // Fall back for any segment we cannot resolve, so a partial outage
+    // degrades one point instead of the whole brief.
+    const modelled = await this.fallback.forecast(route, etaAtMile);
+
+    const points = await Promise.all(
+      route.segments.map(async (seg, i): Promise<WeatherPoint> => {
+        const { lat, lon } = seg.midpoint;
+        const eta = etaAtMile(seg.cumulativeMiles - seg.miles / 2);
+
+        try {
+          const url = await this.hourlyUrl(lat, lon);
+          if (!url) return modelled.points[i];
+
+          const [forecast, alerts] = await Promise.all([
+            this.getJson<{ properties?: { periods?: NwsPeriod[] } }>(url),
+            this.alertsFor(lat, lon),
+          ]);
+
+          const periods = forecast.properties?.periods ?? [];
+          if (periods.length === 0) return modelled.points[i];
+
+          // The period the truck is actually standing in. NWS publishes about
+          // 156 hours; a trip beyond that falls back to the last period rather
+          // than pretending to know.
+          const target = eta.getTime();
+          const period =
+            periods.find(
+              (p) => new Date(p.startTime).getTime() <= target && target < new Date(p.endTime).getTime(),
+            ) ??
+            (target < new Date(periods[0].startTime).getTime()
+              ? periods[0]
+              : periods[periods.length - 1]);
+
+          const tempF =
+            period.temperatureUnit === 'C'
+              ? Math.round((period.temperature * 9) / 5 + 32)
+              : Math.round(period.temperature);
+
+          const windMph = parseWindMph(period.windSpeed);
+          const gustMph = Math.max(windMph, parseWindMph(period.windGust));
+          const precip = parsePrecip(period.shortForecast, tempF);
+          const visibilityMi = inferVisibilityMi(period.shortForecast, precip);
+          const severity = classify(tempF, gustMph, precip, visibilityMi);
+
+          const extra: string[] = [];
+          if (gustMph >= 45) {
+            extra.push(
+              `Gusts to ${gustMph} mph. High-profile vehicles at risk of blowover.`,
+            );
+          }
+          if (isChainLawSeason(seg.state, eta) && tempF <= 34 && precip !== 'none') {
+            extra.push(`${STATES[seg.state].name} chain law may be active on grades.`);
+          }
+
+          const parts = [`${tempF}°F`, period.shortForecast];
+          if (windMph > 0) parts.push(`wind ${windMph}${gustMph > windMph ? ` G${gustMph}` : ''}`);
+          if (visibilityMi < 10) parts.push(`vis ~${visibilityMi} mi`);
+
+          return {
+            state: seg.state,
+            atMile: Math.round(seg.cumulativeMiles - seg.miles / 2),
+            eta: eta.toISOString(),
+            tempF,
+            windMph,
+            gustMph,
+            precip,
+            visibilityMi,
+            severity,
+            summary: parts.join(' · '),
+            alerts: [...alerts, ...extra],
+          };
+        } catch {
+          return modelled.points[i];
+        }
+      }),
+    );
+
+    const worst = points.reduce<WeatherSeverity>(
+      (acc, p) => (SEVERITY_RANK[p.severity] > SEVERITY_RANK[acc] ? p.severity : acc),
+      'clear',
+    );
+
+    // Be honest about a full outage rather than silently serving the model.
+    const anyLive = points.some((p, i) => p !== modelled.points[i]);
+    return {
+      points,
+      worst,
+      provider: anyLive ? this.name : `${this.name} unreachable — showing modeled weather`,
+    };
   }
 }
