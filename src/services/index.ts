@@ -4,7 +4,7 @@ import { assessRisk } from '../calc/risk';
 import type { AddedCost, HosPlan, TripBrief, TripInput, TruckProfile } from '../types';
 import { MockFuel, type FuelProvider } from './fuel';
 import { MockRestrictions, type RestrictionProvider } from './restrictions';
-import { MockRouting, type RoutingProvider } from './routing';
+import { MockRouting, OpenRouteService, type RoutingProvider } from './routing';
 import { MockTraffic, type TrafficProvider } from './traffic';
 import { MockWeather, NwsWeather, type WeatherProvider } from './weather';
 
@@ -66,6 +66,16 @@ const NWS_USER_AGENT =
 export const DEFAULT_SERVICES: ServiceBundle = {
   ...MOCK_SERVICES,
   weather: new NwsWeather(NWS_USER_AGENT),
+  // Truck routing switches on the moment a key exists. Free, no card:
+  // openrouteservice.org/dev/#/signup → EXPO_PUBLIC_ORS_KEY.
+  ...(process.env.EXPO_PUBLIC_ORS_KEY
+    ? {
+        routing: new OpenRouteService(
+          'https://api.openrouteservice.org',
+          process.env.EXPO_PUBLIC_ORS_KEY,
+        ),
+      }
+    : {}),
 };
 
 /**

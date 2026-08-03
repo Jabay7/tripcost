@@ -123,6 +123,157 @@ export class MockRouting implements RoutingProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Live: OpenRouteService (free, no card)
+// ---------------------------------------------------------------------------
+
+const LB_PER_TONNE = 2204.62;
+
+/**
+ * Truck routing from OpenRouteService.
+ *
+ * Free, no credit card, and it has a real heavy-goods-vehicle profile that
+ * takes height, width, length, weight, axle load and hazmat. It will keep a
+ * truck off roads posted against them.
+ *
+ * **Where it is weaker than a commercial router.** ORS is built on
+ * OpenStreetMap, where bridge clearances and posted weight limits are mapped by
+ * volunteers and are patchy in the US. It routes on truck-legal *roads*, but it
+ * is likelier than HERE or Trimble to miss a low bridge. That is a real
+ * difference and the brief should keep saying so — `truckLegal` is reported
+ * true because the profile is genuinely a truck profile, and the provider name
+ * carries the caveat so it shows up in the brief's data-sources list.
+ *
+ * ORS does not return per-state spans, so states are attributed by walking the
+ * returned road geometry — which is the actual road, not a straight line, so
+ * the attribution is far better than the offline estimate's.
+ */
+export class OpenRouteService implements RoutingProvider {
+  readonly name = 'OpenRouteService HGV (OSM data — verify clearances)';
+  readonly live = true;
+
+  constructor(
+    /** Server proxy base, or 'https://api.openrouteservice.org' for local testing. */
+    private readonly apiBase: string,
+    /** Only for a local test. Never ship a key in the app bundle. */
+    private readonly apiKey?: string,
+    private readonly timeoutMs = 20_000,
+  ) {}
+
+  async route(input: TripInput): Promise<Route> {
+    const coords = [input.origin, ...input.stops, input.destination].map((p) => [p.lon, p.lat]);
+
+    const body = {
+      coordinates: coords,
+      units: 'mi',
+      geometry: true,
+      options: {
+        vehicle_type: 'hgv',
+        profile_params: {
+          restrictions: {
+            // ORS wants metres and tonnes.
+            height: 4.11, // 13'6"
+            width: 2.59, // 8'6"
+            length: 22.0, // 72'
+            weight: Number((input.grossWeightLbs / LB_PER_TONNE).toFixed(2)),
+            axleload: 9.07, // 20,000 lb
+            hazmat: input.hazmat !== null,
+          },
+        },
+      },
+    };
+
+    const base = this.apiBase.replace(/\/$/, '');
+    const direct = base.includes('openrouteservice.org');
+    const url = direct ? `${base}/v2/directions/driving-hgv/geojson` : `${base}/route-ors`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let data: {
+      features?: {
+        geometry?: { coordinates?: [number, number][] };
+        properties?: { summary?: { distance?: number; duration?: number } };
+      }[];
+      error?: { message?: string };
+    };
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.apiKey ? { Authorization: this.apiKey } : {}),
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`OpenRouteService returned ${res.status}. ${text.slice(0, 180)}`);
+      }
+      data = await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const feature = data.features?.[0];
+    const path = feature?.geometry?.coordinates;
+    if (!path?.length) {
+      throw new Error(
+        data.error?.message ??
+          'OpenRouteService returned no route. Check that both ends are reachable by a heavy vehicle.',
+      );
+    }
+
+    const loadedMiles = feature?.properties?.summary?.distance ?? 0;
+    const driveSeconds = feature?.properties?.summary?.duration ?? 0;
+
+    // Attribute mileage to states by walking the real road geometry. Distance
+    // between consecutive points is measured rather than assumed, so a winding
+    // mountain section is not counted as a straight line.
+    const segments: RouteSegment[] = [];
+    let cumulative = 0;
+    for (let i = 1; i < path.length; i++) {
+      const a: LatLng = { lat: path[i - 1][1], lon: path[i - 1][0] };
+      const b: LatLng = { lat: path[i][1], lon: path[i][0] };
+      const step = haversineMiles(a, b);
+      if (step <= 0) continue;
+      cumulative += step;
+
+      const state = nearestState(b);
+      const prev = segments[segments.length - 1];
+      if (prev && prev.state === state) {
+        prev.miles += step;
+        prev.cumulativeMiles = cumulative;
+        prev.midpoint = b;
+      } else {
+        segments.push({ state, miles: step, midpoint: b, cumulativeMiles: cumulative });
+      }
+    }
+
+    // Drop slivers created where the road grazes a border, so the brief does
+    // not list a state the truck was in for four hundred feet.
+    const merged = coalesce(segments.filter((s) => s.miles >= 1));
+    if (merged.length === 0) throw new Error('OpenRouteService route produced no usable segments.');
+
+    const states: StateCode[] = [];
+    for (const s of merged) if (!states.includes(s.state)) states.push(s.state);
+
+    // ORS has no toll data, so fall back to the per-state estimate.
+    const tollEstimate = merged.reduce((sum, s) => sum + s.miles * (TOLL_CPM[s.state] ?? 0), 0);
+
+    return {
+      totalMiles: loadedMiles + input.deadheadMiles,
+      driveHours: driveSeconds / 3600,
+      segments: merged,
+      states,
+      tollEstimate,
+      truckLegal: true,
+      provider: this.name,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Live: HERE Routing v8 (truck-legal)
 // ---------------------------------------------------------------------------
 
