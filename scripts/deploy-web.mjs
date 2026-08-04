@@ -23,7 +23,16 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path';
 
 const REPO = process.env.DEPLOY_REPO ?? 'Jabay7/tripcost';
-const BASE = process.env.EXPO_DEPLOY_BASE_URL ?? `/${REPO.split('/')[1]}`;
+
+/**
+ * A custom domain serves from the root, a github.io project site serves from
+ * /<repo>. Getting this wrong is the classic Pages failure: every asset 404s
+ * and the page renders blank with nothing in the console pointing at the cause.
+ *
+ *   DEPLOY_DOMAIN=tripcost.app npm run deploy:web
+ */
+const DOMAIN = process.env.DEPLOY_DOMAIN ?? '';
+const BASE = process.env.EXPO_DEPLOY_BASE_URL ?? (DOMAIN ? '/' : `/${REPO.split('/')[1]}`);
 const dist = join(process.cwd(), 'dist');
 
 const run = (cmd, args, opts = {}) =>
@@ -117,6 +126,15 @@ if (!existsSync(join(dist, 'index.html'))) {
 // Jekyll would drop _expo/ entirely without this.
 writeFileSync(join(dist, '.nojekyll'), '');
 
+// GitHub Pages reads the custom domain from a CNAME file in the published
+// branch. It must be rewritten on every deploy — the branch is replaced
+// wholesale, so a CNAME set once in the repo settings is wiped by the next
+// push and the domain silently reverts to github.io.
+if (DOMAIN) {
+  writeFileSync(join(dist, 'CNAME'), `${DOMAIN}\n`);
+  console.log(`Custom domain: ${DOMAIN}`);
+}
+
 // Pages has no SPA rewrite, but Expo's static export writes a real .html for
 // every route, so deep links work. 404.html covers anything unrouted.
 writeFileSync(
@@ -146,4 +164,10 @@ git('push', '-f', 'origin', 'gh-pages');
 rmSync(join(dist, '.git'), { recursive: true, force: true });
 
 const [owner, name] = REPO.split('/');
-console.log(`\nLive at https://${owner.toLowerCase()}.github.io/${name}/\n`);
+console.log(
+  `\nLive at ${DOMAIN ? `https://${DOMAIN}/` : `https://${owner.toLowerCase()}.github.io/${name}/`}\n`,
+);
+if (DOMAIN) {
+  console.log('If this is the first deploy on that domain, DNS can take up to an hour,');
+  console.log("and GitHub's HTTPS certificate is issued a few minutes after DNS resolves.\n");
+}
