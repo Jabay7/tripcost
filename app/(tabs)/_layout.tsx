@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, Tabs } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/store/auth';
-import { colors, space, type } from '../../src/ui/theme';
+import { colors, MAX_CONTENT_WIDTH, space, type } from '../../src/ui/theme';
 
 /**
  * Sits above the tab bar whenever the data on screen is invented.
@@ -67,22 +68,34 @@ function AccountBar() {
 }
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
-    <>
+    <View style={[s.root, { paddingTop: insets.top }]}>
     <DemoBanner />
     <AccountBar />
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontWeight: '800' },
-        headerShadowVisible: false,
+        // The bar names the current screen, so a header underneath it would
+        // just repeat "Drivers" twice and eat ~50pt of a phone screen.
+        headerShown: false,
+        tabBarPosition: 'top',
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          height: 62,
-          paddingBottom: 8,
+          // Transparent so the surface-coloured band behind it runs the full
+          // width of the window while the tabs themselves stay in the same
+          // 720pt column as the content. On a desktop browser a full-width bar
+          // pushes "Plan Trip" and "Ledger" to opposite edges of a 27-inch
+          // monitor, nowhere near the content they belong to.
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          borderBottomWidth: 0,
+          alignSelf: 'center',
+          width: '100%',
+          maxWidth: MAX_CONTENT_WIDTH,
+          height: 58,
           paddingTop: 6,
+          paddingBottom: 6,
+          elevation: 0,
         },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textFaint,
@@ -126,11 +139,13 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
-    </>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.surface },
+
   banner: {
     flexDirection: 'row',
     alignItems: 'center',

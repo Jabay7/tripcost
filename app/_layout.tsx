@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StoreProvider } from '../src/store/store';
 import { TripProvider } from '../src/store/trip';
 import { AuthProvider } from '../src/store/auth';
@@ -11,6 +12,9 @@ import { colors } from '../src/ui/theme';
 export default function RootLayout() {
   return (
     <ErrorBoundary>
+    {/* Needed by the tab bar, which now sits at the top and would otherwise
+        run under the notch on a phone. */}
+    <SafeAreaProvider>
     <AuthProvider>
     <StoreProvider>
       <TripProvider>
@@ -41,6 +45,7 @@ export default function RootLayout() {
       </TripProvider>
     </StoreProvider>
     </AuthProvider>
+    </SafeAreaProvider>
     </ErrorBoundary>
   );
 }
