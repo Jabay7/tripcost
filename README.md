@@ -61,13 +61,76 @@ Other commands:
 ```bash
 npm run preflight     # typecheck + tests + end-to-end verify. Run before shipping.
 npm run typecheck     # tsc, strict
-npm test              # 70 unit tests over cost, HOS, weather, fleet and driver-copy math
+npm test              # 110 unit tests over cost, HOS, weather, fleet, driver-copy and account isolation
 npm run verify        # prints a full brief, driver copy, leak check and fleet report
 npm run bench         # where the time actually goes
 npm run check:weather # is NWS reachable and returning sane data?
 npm run icons         # regenerate the app icon set
 npm run server        # extraction server for document scanning
 ```
+
+## Accounts
+
+Without a database behind it the app offers only the demo — a sample carrier
+held in the browser, labelled as fake on every screen. Sign-in needs Supabase.
+
+**Setup, once:**
+
+1. [supabase.com](https://supabase.com) → new project (the free tier is enough).
+2. **SQL Editor** → paste all of `supabase/schema.sql` → **Run**.
+3. **Settings → API** → copy the **Project URL** and the **anon** key.
+4. Put both in `.env` (copy `.env.example` if you have not already):
+
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=https://xxxxxxxx.supabase.co
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
+   ```
+
+5. Restart the dev server. The landing page now offers **Sign in** instead of
+   "accounts not connected".
+
+Supabase turns on email confirmation by default, which means `signUp` returns no
+session and the company cannot be created in the same step. The app handles
+this: the company name (or invite code) is parked locally and applied on the
+first sign-in that finds no company, so a carrier who confirms their email and
+signs in lands in their own account rather than on "not linked to a carrier". To
+skip the email step entirely during development, turn off **Authentication →
+Sign In / Providers → Confirm email**.
+
+**Why the anon key is in the bundle, and why that is fine.** It is a public
+identifier — how an unauthenticated browser addresses the project at all. It
+grants no data access on its own: every table has Row-Level Security, so a
+request carrying only this key reads nothing. What must *never* go here is the
+**service_role** / secret key, which bypasses every policy. The deploy script
+decodes the key and refuses to build if it is anything other than `anon`
+(`scripts/lib/supabase-key.mjs`), because the two sit next to each other on the
+same settings page and confusing them produces no visible symptom.
+
+**How the tenancy works.**
+
+| | Owner | Driver |
+|---|---|---|
+| Fleet, trucks, cost basis | ✅ | unit list only |
+| Rates, margins, ledger | ✅ | ❌ — no read path at all |
+| Driver roster | whole roster | their own record only |
+| Invite drivers | ✅ | ❌ |
+
+A carrier signs up and becomes the owner of a new company. Drivers cannot sign
+themselves up — the owner issues a single-use invite code (Drivers tab → *Invite
+a driver*) that expires in 14 days. The driver redeems it during signup, so the
+carrier never handles a driver's password.
+
+Isolation is enforced by Postgres, not by remembering a `WHERE` clause.
+App-level filtering fails open — one forgotten condition and a carrier sees a
+competitor's rates. RLS fails closed: a query missing its filter returns nothing
+rather than everything. `test/auth.test.ts` asserts every table has RLS enabled,
+every policy is scoped to a company, and the ledger is owner-only.
+
+One honest limitation: `trucks.profile` holds the cost basis in a single JSONB
+column and drivers can read the trucks row. RLS is row-level, not column-level,
+so a determined driver with the anon key could read it even though no screen
+shows it. Splitting it into an owner-only `truck_costs` table is a migration, not
+a rewrite, and is noted at the bottom of `schema.sql`.
 
 ## Building for phones
 

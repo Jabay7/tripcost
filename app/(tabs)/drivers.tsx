@@ -17,6 +17,7 @@ import {
   Section,
   Pill,
 } from '../../src/ui/components';
+import { InviteCard } from '../../src/ui/InviteCard';
 import { colors, shortDate, space, type } from '../../src/ui/theme';
 
 export default function DriversScreen() {
@@ -171,6 +172,8 @@ export default function DriversScreen() {
 
         <Button title="+ Add driver" onPress={onAdd} />
       </Section>
+
+      <InviteCard />
 
       <Card>
         <Label>Assignment</Label>

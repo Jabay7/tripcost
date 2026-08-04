@@ -274,6 +274,63 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Issuing an invite
+--
+-- Generated server-side rather than in the client for two reasons: the code
+-- space stays under the database's control, and collisions are retried against
+-- the unique index instead of being a race the client cannot see.
+--
+-- The alphabet omits 0/O and 1/I/L. These codes get read aloud over a phone or
+-- copied off a text message at a fuel desk, and a code nobody can transcribe is
+-- a support call.
+-- ---------------------------------------------------------------------------
+
+create or replace function create_invite(for_driver_id uuid default null)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  alphabet constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  new_code text;
+  attempt  int := 0;
+begin
+  if not auth_is_owner() then
+    raise exception 'only an owner can invite drivers';
+  end if;
+
+  -- A driver_id, when given, must belong to the caller's own company.
+  if for_driver_id is not null
+     and not exists (
+       select 1 from drivers
+       where id = for_driver_id and company_id = auth_company_id()
+     ) then
+    raise exception 'driver not found';
+  end if;
+
+  loop
+    attempt := attempt + 1;
+    new_code := '';
+    for i in 1..8 loop
+      new_code := new_code || substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1);
+      if i = 4 then new_code := new_code || '-'; end if;
+    end loop;
+
+    begin
+      insert into invites (company_id, driver_id, code)
+        values (auth_company_id(), for_driver_id, new_code);
+      return new_code;
+    exception when unique_violation then
+      if attempt >= 10 then
+        raise exception 'could not generate an invite code';
+      end if;
+    end;
+  end loop;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Claiming an invite
 --
 -- SECURITY DEFINER so the caller never needs read access to `invites` — they

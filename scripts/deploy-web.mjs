@@ -21,6 +21,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { classifySupabaseKey } from './lib/supabase-key.mjs';
 
 const REPO = process.env.DEPLOY_REPO ?? 'Jabay7/tripcost';
 
@@ -51,6 +52,50 @@ rmSync(dist, { recursive: true, force: true });
  * an app binary is meaningfully harder to mine than a URL. Set
  * DEPLOY_ALLOW_PUBLIC_KEYS=1 to override, but understand what you are shipping.
  */
+/**
+ * The one class of credential that belongs in a public bundle.
+ *
+ * The Supabase anon key is a public identifier, not a secret — it is how an
+ * unauthenticated browser addresses the project at all. What protects the data
+ * is Row-Level Security (supabase/schema.sql); a request carrying only this key
+ * can read nothing. Stripping it does not harden anything, it just breaks
+ * sign-in.
+ *
+ * The service-role key is the opposite and would be catastrophic here: it
+ * bypasses RLS entirely. `assertNotPrivileged` below refuses to build if one is
+ * pasted into this variable by mistake, which is an easy mistake to make —
+ * they sit next to each other on the same settings page.
+ */
+const PUBLIC_BY_DESIGN = new Set(['EXPO_PUBLIC_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_ANON_KEY']);
+
+/** Parses .env off disk. npm does not load it, and EXPO_NO_DOTENV stops Expo doing so. */
+const readEnvFile = () => {
+  const envPath = join(process.cwd(), '.env');
+  if (!existsSync(envPath)) return {};
+  const out = {};
+  // Strip a UTF-8 BOM: it becomes part of the first variable's name otherwise.
+  for (const line of readFileSync(envPath, 'utf8').replace(/^﻿/, '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq < 1) continue;
+    out[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+  }
+  return out;
+};
+
+/** Refuses to build if the "anon" key is anything that bypasses RLS. */
+const assertNotPrivileged = (value) => {
+  const { verdict, reason } = classifySupabaseKey(value);
+  if (verdict === 'public') return;
+  if (verdict === 'privileged') {
+    console.error(`\nREFUSING TO BUILD — EXPO_PUBLIC_SUPABASE_ANON_KEY is a ${reason}.`);
+    console.error('That key bypasses every Row-Level Security policy. Use the anon key instead.\n');
+    process.exit(1);
+  }
+  console.warn(`Warning: Supabase key not recognised (${reason}). Verify it is the anon key.\n`);
+};
+
 const buildEnv = { ...process.env, EXPO_DEPLOY_BASE_URL: BASE };
 if (!process.env.DEPLOY_ALLOW_PUBLIC_KEYS) {
   // Deleting the variables from process.env is NOT enough — Expo reads .env
@@ -60,7 +105,24 @@ if (!process.env.DEPLOY_ALLOW_PUBLIC_KEYS) {
   for (const k of Object.keys(buildEnv)) {
     if (k.startsWith('EXPO_PUBLIC_') && /KEY|TOKEN|SECRET/i.test(k)) delete buildEnv[k];
   }
-  console.log('Public bundle: .env disabled, EXPO_PUBLIC_*KEY stripped.\n');
+
+  // .env is off, so the public-by-design values have to be put back explicitly.
+  const fileEnv = readEnvFile();
+  const restored = [];
+  for (const name of PUBLIC_BY_DESIGN) {
+    const value = process.env[name] ?? fileEnv[name];
+    if (!value) continue;
+    if (name.endsWith('ANON_KEY')) assertNotPrivileged(value);
+    buildEnv[name] = value;
+    restored.push(name);
+  }
+
+  console.log('Public bundle: .env disabled, EXPO_PUBLIC_*KEY stripped.');
+  console.log(
+    restored.length
+      ? `Kept (public by design, protected by RLS): ${restored.join(', ')}\n`
+      : 'No Supabase config found — the site will show "accounts not connected".\n',
+  );
 }
 
 // --clear is load-bearing, not hygiene. Metro inlines EXPO_PUBLIC_* values at
@@ -80,20 +142,19 @@ if (!process.env.DEPLOY_ALLOW_PUBLIC_KEYS) {
   // Read .env off disk rather than trusting process.env — npm does not load it,
   // so a scanner that only looks at the environment finds nothing to look for
   // and reports a false clean. The file is the thing that leaks.
+  //
+  // PUBLIC_BY_DESIGN values are excluded because they were deliberately kept
+  // above; an allowlist that is not honoured here would fail every deploy.
   const suspects = [];
+  const consider = (name, value) => {
+    if (PUBLIC_BY_DESIGN.has(name)) return;
+    if (typeof value !== 'string' || value.length < 16) return;
+    suspects.push([name, value]);
+  };
   for (const [k, v] of Object.entries(process.env)) {
-    if (/KEY|TOKEN|SECRET/i.test(k) && typeof v === 'string' && v.length >= 16) suspects.push([k, v]);
+    if (/KEY|TOKEN|SECRET/i.test(k)) consider(k, v);
   }
-  const envPath = join(process.cwd(), '.env');
-  if (existsSync(envPath)) {
-    for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-      const eq = line.indexOf('=');
-      if (eq < 1) continue;
-      const name = line.slice(0, eq).trim();
-      const value = line.slice(eq + 1).trim();
-      if (value.length >= 16) suspects.push([name, value]);
-    }
-  }
+  for (const [k, v] of Object.entries(readEnvFile())) consider(k, v);
   if (suspects.length === 0) {
     console.warn('Secret scan: nothing to check for — no keys found in env or .env.');
   }

@@ -225,14 +225,25 @@ export function Field({
   keyboardType = 'default',
   suffix,
   hint,
+  secure,
+  autoCapitalize,
+  autoComplete,
+  autoCorrect,
+  onSubmitEditing,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
   placeholder?: string;
-  keyboardType?: 'default' | 'numeric' | 'decimal-pad';
+  keyboardType?: 'default' | 'numeric' | 'decimal-pad' | 'email-address';
   suffix?: string;
   hint?: string;
+  /** Masks input. Used for passwords, which are never logged or persisted here. */
+  secure?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoComplete?: 'off' | 'email' | 'current-password' | 'new-password' | 'one-time-code';
+  autoCorrect?: boolean;
+  onSubmitEditing?: () => void;
 }) {
   return (
     <View style={s.field}>
@@ -246,6 +257,12 @@ export function Field({
           placeholderTextColor={colors.textFaint}
           keyboardType={keyboardType}
           selectionColor={colors.accent}
+          secureTextEntry={secure}
+          autoCapitalize={autoCapitalize}
+          autoComplete={autoComplete}
+          autoCorrect={autoCorrect}
+          onSubmitEditing={onSubmitEditing}
+          returnKeyType={onSubmitEditing ? 'go' : 'default'}
         />
         {suffix ? <Text style={s.fieldSuffix}>{suffix}</Text> : null}
       </View>
