@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../src/store/auth';
 import { FeatureTile, HeroArt, SampleBrief, Step } from '../src/ui/art';
 import { Body, Button, Card, Dim, Label, Screen } from '../src/ui/components';
+import { Logo, LogoMark } from '../src/ui/Logo';
 import { colors, radius, space, type } from '../src/ui/theme';
 
 /**
@@ -32,12 +33,7 @@ export default function WelcomeScreen() {
     <Screen>
       {/* --- Masthead --------------------------------------------------------- */}
       <View style={s.masthead}>
-        <View style={s.brand}>
-          <View style={s.mark}>
-            <View style={s.markRoad} />
-          </View>
-          <Text style={s.wordmark}>TripCost</Text>
-        </View>
+        <Logo size={30} />
         {backendConfigured ? (
           <Text style={s.navLink} onPress={() => router.push('/login')}>
             Sign in
@@ -218,7 +214,10 @@ export default function WelcomeScreen() {
       )}
 
       <View style={s.footer}>
-        <Text style={s.footerBrand}>TripCost</Text>
+        <View style={s.footerBrandRow}>
+          <LogoMark size={22} />
+          <Text style={s.footerBrand}>TripCost</Text>
+        </View>
         <Text style={s.footerText}>
           Trip costing and fleet management for CDL carriers. Built by a former USMC motor transport
           operator.
@@ -237,29 +236,6 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: space.sm,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  mark: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  markRoad: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 11,
-    borderRightWidth: 11,
-    borderBottomWidth: 21,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: colors.accent,
-  },
-  wordmark: { ...type.h1, color: colors.text, fontSize: 21 },
   navLink: { ...type.h3, color: colors.accent, paddingVertical: space.sm },
 
   // --- Hero -----------------------------------------------------------------
@@ -304,6 +280,7 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  footerBrandRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   footerBrand: { ...type.h3, color: colors.textDim },
   footerText: { ...type.small, color: colors.textFaint, lineHeight: 18 },
 });
