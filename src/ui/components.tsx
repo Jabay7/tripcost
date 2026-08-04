@@ -10,7 +10,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { colors, radius, space, type } from './theme';
+import { colors, MAX_CONTENT_WIDTH, radius, space, type } from './theme';
 
 // ---------------------------------------------------------------------------
 // Layout
@@ -365,7 +365,15 @@ export function Empty({ title, body }: { title: string; body: string }) {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  screenContent: { padding: space.lg, paddingBottom: space.xxl * 2, gap: space.lg },
+  screenContent: {
+    padding: space.lg,
+    paddingBottom: space.xxl * 2,
+    gap: space.lg,
+    // Centre the column on wide windows instead of stretching to the edges.
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
 
   card: {
     backgroundColor: colors.surface,

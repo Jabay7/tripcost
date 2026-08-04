@@ -1,14 +1,12 @@
 # TripCost
 
-A convoy brief for civilian CDL drivers.
+Trip costing and fleet management for CDL carriers.
 
-Before a Marine Corps motor transport convoy rolls, someone stands up and briefs
-it: route, timeline, hazards, what to do when it goes wrong. Owner-operators and
-small fleets get none of that. They get a rate confirmation and a pickup number,
-and they find out on the shoulder of I-80 what the load actually cost them.
-
-TripCost gives a driver that brief, and gives the company behind them a running
-picture of what the fleet costs to operate.
+Most of the time a driver gets a rate confirmation and a pickup number, and finds
+out on the shoulder of I-80 what the load actually cost. TripCost works it out
+first — every real cost, the hours, the weather, and whether the load is worth
+running — and gives the carrier behind them a running picture of what the fleet
+costs to operate.
 
 ---
 
@@ -201,7 +199,7 @@ app/                     Expo Router screens
     trucks.tsx           Truck list
     drivers.tsx          Roster + carrier details
     ledger.tsx           Recorded costs and revenue
-  brief.tsx              The convoy brief
+  brief.tsx              The trip brief
   scan.tsx               Photograph a document → review → apply
   add-cost.tsx           Unplanned cost entry
   truck/[id].tsx         Truck cost basis editor

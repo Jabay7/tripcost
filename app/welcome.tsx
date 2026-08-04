@@ -40,7 +40,7 @@ export default function WelcomeScreen() {
           <View style={s.road} />
         </View>
         <Text style={s.title}>TripCost</Text>
-        <Text style={s.tagline}>A convoy brief for civilian CDL drivers.</Text>
+        <Text style={s.tagline}>Trip costing and fleet management for CDL carriers.</Text>
       </View>
 
       <Card>

@@ -33,9 +33,9 @@ export const WALKTHROUGH: WalkthroughStep[] = [
   {
     id: 'what',
     chip: 'What it is',
-    title: 'A convoy brief for civilian drivers',
+    title: 'Know what a load pays before you book it',
     body:
-      'Before a military convoy rolls, someone stands up and briefs it: route, timeline, hazards, and what to do when it goes wrong. Owner-operators get a rate confirmation and a pickup number, and find out on the shoulder what the load actually cost them. This gives you that brief.',
+      'Most of the time you get a rate confirmation and a pickup number, and you find out on the shoulder what the load actually cost you. This works it out first — every real cost, the hours, the weather, and whether the load is worth running.',
     points: [
       'Tells you what a load pays after every real cost, before you book it.',
       'Tells you what the road is going to do to you along the way.',

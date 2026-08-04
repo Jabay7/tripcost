@@ -824,7 +824,7 @@ export type RiskAssessment = {
   score: number;
   level: 'GREEN' | 'AMBER' | 'RED';
   factors: RiskFactor[];
-  /** Plain-language recommendation, convoy-brief style. */
+  /** Plain-language go/no-go recommendation. */
   bottomLine: string;
 };
 

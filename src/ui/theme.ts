@@ -46,6 +46,16 @@ export const space = {
   xxl: 32,
 } as const;
 
+/**
+ * Content never gets wider than this, and centres once the window exceeds it.
+ *
+ * The app is laid out for a phone. On a desktop browser an unconstrained
+ * React Native Web view stretches every card and every row edge to edge, which
+ * puts a label at one side of a 27-inch monitor and its number at the other.
+ * 720 keeps line length readable and matches how it looks on the device.
+ */
+export const MAX_CONTENT_WIDTH = 720;
+
 export const radius = {
   sm: 6,
   md: 10,

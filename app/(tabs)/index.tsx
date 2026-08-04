@@ -13,7 +13,7 @@ import { useTrip } from '../../src/store/trip';
 import type { EquipmentType, HazmatClass } from '../../src/types';
 import { Body, Button, Card, Dim, Empty, Field } from '../../src/ui/components';
 import { PlacePicker } from '../../src/ui/PlacePicker';
-import { colors, radius, space, type, usd, usdCents } from '../../src/ui/theme';
+import { colors, MAX_CONTENT_WIDTH, radius, space, type, usd, usdCents } from '../../src/ui/theme';
 
 /**
  * Trip entry as a short interview rather than a form.
@@ -594,7 +594,16 @@ function num(v: string): number {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
 
-  progressWrap: { paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm },
+  // Progress rail, content and action bar all share one centred column so they
+  // stay aligned instead of spanning a wide desktop window independently.
+  progressWrap: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.sm,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
   progressBar: { flexDirection: 'row', gap: space.sm },
   progressSeg: { flex: 1, gap: 6, paddingVertical: 4 },
   progressTrack: { height: 4, borderRadius: 2, backgroundColor: colors.border },
@@ -602,7 +611,15 @@ const s = StyleSheet.create({
   progressLabel: { ...type.tiny, color: colors.textFaint },
   progressLabelOn: { color: colors.accent },
 
-  scroll: { padding: space.lg, paddingTop: space.sm, paddingBottom: space.xxl, gap: space.lg },
+  scroll: {
+    padding: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.xxl,
+    gap: space.lg,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
 
   question: { ...type.h1, color: colors.text, lineHeight: 30 },
 
@@ -678,6 +695,12 @@ const s = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  footerRow: { flexDirection: 'row', gap: space.sm },
+  footerRow: {
+    flexDirection: 'row',
+    gap: space.sm,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
   loading: { flexDirection: 'row', gap: space.md, alignItems: 'center', justifyContent: 'center', minHeight: 48 },
 });

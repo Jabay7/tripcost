@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { WALKTHROUGH } from '../src/data/walkthrough';
 import { Body, Button, Card, Dim, Label } from '../src/ui/components';
-import { colors, radius, space, type } from '../src/ui/theme';
+import { colors, MAX_CONTENT_WIDTH, radius, space, type } from '../src/ui/theme';
 
 /**
  * The walkthrough.
@@ -103,7 +103,17 @@ export default function WalkthroughScreen() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
 
-  rail: { flexDirection: 'row', gap: 4, paddingHorizontal: space.lg, paddingTop: space.md },
+  // Every band is centred to the same width so the rail, the text and the
+  // buttons line up as one column rather than three full-width strips.
+  rail: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
   railItem: { flex: 1, paddingVertical: 6 },
   railBar: { height: 4, borderRadius: 2, backgroundColor: colors.border },
   railBarOn: { backgroundColor: colors.accent },
@@ -114,11 +124,22 @@ const s = StyleSheet.create({
     paddingHorizontal: space.lg,
     paddingBottom: space.sm,
     gap: space.sm,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
   },
   chip: { ...type.tiny, color: colors.accent, flex: 1 },
   count: { ...type.tiny, color: colors.textFaint },
 
-  scroll: { padding: space.lg, paddingTop: 0, paddingBottom: space.xxl, gap: space.lg },
+  scroll: {
+    padding: space.lg,
+    paddingTop: 0,
+    paddingBottom: space.xxl,
+    gap: space.lg,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
   title: { ...type.h1, color: colors.text, lineHeight: 31 },
   lead: { color: colors.textDim, lineHeight: 23 },
 
@@ -134,7 +155,13 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface,
     gap: space.sm,
   },
-  footerRow: { flexDirection: 'row', gap: space.sm },
+  footerRow: {
+    flexDirection: 'row',
+    gap: space.sm,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
   skip: { alignSelf: 'center', minHeight: 36, justifyContent: 'center' },
   skipText: { ...type.small, color: colors.textFaint, fontWeight: '700' },
 });

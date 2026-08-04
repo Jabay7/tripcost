@@ -10,7 +10,7 @@ import type {
 } from '../types';
 
 /**
- * Scores a trip the way a convoy brief scores a route: not "will it be
+ * Scores a trip on what can actually stop it: not "will it be
  * unpleasant" but "what can stop this movement or hurt someone".
  *
  * Score is 0–100. GREEN under 25, AMBER 25–54, RED 55 and up.
