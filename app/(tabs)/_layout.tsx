@@ -1,10 +1,44 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { router, Tabs } from 'expo-router';
 import React from 'react';
-import { colors } from '../../src/ui/theme';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from '../../src/store/auth';
+import { colors, space, type } from '../../src/ui/theme';
+
+/**
+ * Sits above the tab bar whenever the data on screen is invented.
+ *
+ * A demo that looks like production is how someone ends up pricing a real load
+ * off sample numbers. This is deliberately persistent and slightly loud — it
+ * cannot be dismissed, only left.
+ */
+function DemoBanner() {
+  const { mode, exitDemo } = useAuth();
+  if (mode !== 'demo') return null;
+
+  return (
+    <View style={s.banner}>
+      <Text style={s.bannerText}>
+        DEMO — sample carrier, invented numbers. Nothing here is your data.
+      </Text>
+      <Pressable
+        onPress={() => {
+          exitDemo();
+          router.replace('/welcome');
+        }}
+        accessibilityRole="button"
+        style={s.exit}
+      >
+        <Text style={s.exitText}>Exit</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   return (
+    <>
+    <DemoBanner />
     <Tabs
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
@@ -60,5 +94,22 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 }
+
+const s = StyleSheet.create({
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    backgroundColor: colors.amberDim,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.amber,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+  },
+  bannerText: { ...type.small, color: colors.amber, flex: 1, lineHeight: 17, fontWeight: '600' },
+  exit: { minHeight: 32, justifyContent: 'center', paddingHorizontal: space.sm },
+  exitText: { ...type.small, color: colors.amber, fontWeight: '800' },
+});

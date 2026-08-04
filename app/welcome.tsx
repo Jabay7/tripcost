@@ -1,36 +1,23 @@
 import { router } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { WALKTHROUGH_STEPS } from '../src/data/walkthrough';
-import { useStore } from '../src/store/store';
+import { useAuth } from '../src/store/auth';
 import { Body, Button, Card, Dim, Label, Screen } from '../src/ui/components';
 import { colors, radius, space, type } from '../src/ui/theme';
 
 /**
- * The first thing anyone sees, once.
+ * The public page. Everything a stranger at the URL is allowed to see.
  *
- * Two doors, no dark patterns: someone who already runs a TMS should be one tap
- * from the app, and someone who has never seen it should not have to guess
- * their way in. Both answers are equally easy to pick — the walkthrough is not
- * the default and the skip is not buried.
- *
- * Either choice marks onboarding done, so this screen never appears again
- * unannounced. It stays reachable from Drivers → "How this app works".
+ * No fleet, no trucks, no costs — those live behind the gate. What this has to
+ * do is explain what the thing is, offer a way in, and be honest that the demo
+ * is a demo.
  */
 export default function WelcomeScreen() {
-  const { completeOnboarding } = useStore();
+  const { enterDemo, backendConfigured } = useAuth();
 
-  const skip = () => {
-    completeOnboarding();
+  const tryDemo = () => {
+    enterDemo();
     router.replace('/(tabs)');
-  };
-
-  const tour = () => {
-    // Marked complete on entry rather than on finish: someone who bails halfway
-    // through has still made their choice, and re-prompting them next launch
-    // would be nagging.
-    completeOnboarding();
-    router.replace('/walkthrough');
   };
 
   return (
@@ -45,33 +32,75 @@ export default function WelcomeScreen() {
 
       <Card>
         <Body>
-          Work out what a load actually pays before you book it, know what the road is going to do to
-          you along the way, and track what your trucks cost to run.
+          Work out what a load actually pays before you book it. Track what every truck costs to
+          run. Send drivers a brief with the route, hours, weather and fuel plan — and none of your
+          rates.
         </Body>
       </Card>
 
+      {/* --- Sign in ---------------------------------------------------------- */}
+      {backendConfigured ? (
+        <View style={{ gap: space.sm }}>
+          <Button title="Sign in" onPress={() => router.push('/login')} />
+          <Button
+            title="Create a carrier account"
+            variant="secondary"
+            onPress={() => router.push('/signup')}
+          />
+          <Text style={s.under}>
+            Your fleet, costs and driver records are private to your company and visible only to
+            accounts you invite.
+          </Text>
+        </View>
+      ) : (
+        <Card accent={colors.amber}>
+          <Label>Accounts not connected yet</Label>
+          <Body>
+            Sign-in needs a database behind it, and this build does not have one wired. Until then
+            the demo below is the only way in.
+          </Body>
+          <Dim style={{ marginTop: space.sm }}>
+            Setup instructions are in the project's README under Accounts.
+          </Dim>
+        </Card>
+      )}
+
+      {/* --- Demo ------------------------------------------------------------- */}
       <View style={{ gap: space.sm }}>
-        <Text style={s.question}>Have you used something like this before?</Text>
-
-        <Button title="Show me how it works" onPress={tour} />
+        <Button
+          title="Try the demo"
+          variant={backendConfigured ? 'ghost' : 'primary'}
+          onPress={tryDemo}
+        />
         <Text style={s.under}>
-          {WALKTHROUGH_STEPS} short screens, about two minutes. You can stop at any point.
-        </Text>
-
-        <View style={s.gap} />
-
-        <Button title="I know my way around — go to the app" variant="secondary" onPress={skip} />
-        <Text style={s.under}>
-          You can open the walkthrough later from the Drivers tab if you change your mind.
+          Opens a sample carrier with three invented trucks so you can see how it works. The data is
+          made up, stays in this browser, and is never sent anywhere.
         </Text>
       </View>
 
+      <Card>
+        <Label>What it does</Label>
+        <View style={s.list}>
+          {[
+            'Costs a load against your truck — fuel, tires, maintenance, payment, tolls, per diem — and tells you the break-even rate.',
+            'Plans the hours: 11-hour limit, 14-hour window, 30-minute break, 10-hour reset, and whether the load can be delivered legally on time.',
+            'Live weather along the route for the time you will actually be there, plus closures and hazmat restrictions.',
+            'Fleet cost per truck and combined, day through year, with operating ratio.',
+            'A driver copy of the brief with every rate and cost removed.',
+          ].map((line, i) => (
+            <View key={i} style={s.item}>
+              <Text style={s.bullet}>▸</Text>
+              <Body style={{ flex: 1 }}>{line}</Body>
+            </View>
+          ))}
+        </View>
+      </Card>
+
       <Card accent={colors.amber}>
-        <Label>Before you trust a number</Label>
+        <Label>What it is not</Label>
         <Dim>
-          The app opens with a sample fleet and industry-average costs so you can see how it works.
-          Replace them with your own figures on the Trucks tab before you make a decision with them —
-          your settlement statements always beat an average.
+          A planning tool. Not an ELD, not a system of record for hours of service, and not legal or
+          tax advice. Your ELD is the authority on your available hours.
         </Dim>
       </Card>
     </Screen>
@@ -91,7 +120,6 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
-  // A flat nod to the app icon: a road narrowing to a vanishing point.
   road: {
     width: 0,
     height: 0,
@@ -105,7 +133,9 @@ const s = StyleSheet.create({
   title: { ...type.hero, color: colors.text },
   tagline: { ...type.body, color: colors.textDim, textAlign: 'center' },
 
-  question: { ...type.h2, color: colors.text, marginBottom: space.xs },
   under: { ...type.small, color: colors.textFaint, lineHeight: 18, paddingHorizontal: 2 },
-  gap: { height: space.md },
+
+  list: { gap: 2 },
+  item: { flexDirection: 'row', gap: space.sm, paddingVertical: 5 },
+  bullet: { color: colors.accent, fontWeight: '900', fontSize: 14, marginTop: 3 },
 });

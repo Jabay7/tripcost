@@ -3,17 +3,19 @@ import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { StoreProvider } from '../src/store/store';
 import { TripProvider } from '../src/store/trip';
+import { AuthProvider } from '../src/store/auth';
+import { AuthGate } from '../src/ui/AuthGate';
 import { ErrorBoundary } from '../src/ui/ErrorBoundary';
-import { OnboardingGate } from '../src/ui/OnboardingGate';
 import { colors } from '../src/ui/theme';
 
 export default function RootLayout() {
   return (
     <ErrorBoundary>
+    <AuthProvider>
     <StoreProvider>
       <TripProvider>
         <StatusBar style="light" />
-        <OnboardingGate />
+        <AuthGate />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.surface },
@@ -36,6 +38,7 @@ export default function RootLayout() {
         </Stack>
       </TripProvider>
     </StoreProvider>
+    </AuthProvider>
     </ErrorBoundary>
   );
 }
