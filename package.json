@@ -19,7 +19,8 @@
     "server": "node --env-file-if-exists=.env server/index.mjs",
     "preflight": "npm run typecheck && npm test && npm run verify",
     "fix-deps": "expo install --fix",
-    "check:routing": "tsx --env-file-if-exists=.env scripts/check-routing.ts"
+    "check:routing": "tsx --env-file-if-exists=.env scripts/check-routing.ts",
+    "check:fuel": "tsx --env-file-if-exists=.env scripts/check-fuel.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

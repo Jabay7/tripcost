@@ -2,7 +2,7 @@ import { computeCosts } from '../calc/costs';
 import { planHos } from '../calc/hos';
 import { assessRisk } from '../calc/risk';
 import type { AddedCost, HosPlan, TripBrief, TripInput, TruckProfile } from '../types';
-import { MockFuel, type FuelProvider } from './fuel';
+import { EiaFuel, MockFuel, type FuelProvider } from './fuel';
 import { MockRestrictions, type RestrictionProvider } from './restrictions';
 import { MockRouting, OpenRouteService, type RoutingProvider } from './routing';
 import { MockTraffic, type TrafficProvider } from './traffic';
@@ -75,6 +75,12 @@ export const DEFAULT_SERVICES: ServiceBundle = {
           process.env.EXPO_PUBLIC_ORS_KEY,
         ),
       }
+    : {}),
+  // Live weekly diesel. Free key from eia.gov/opendata/register.php.
+  // Accepts either name so a key pasted into .env as EIA_KEY works on the
+  // server side, while EXPO_PUBLIC_EIA_KEY is what reaches the app bundle.
+  ...(process.env.EXPO_PUBLIC_EIA_KEY || process.env.EIA_KEY
+    ? { fuel: new EiaFuel((process.env.EXPO_PUBLIC_EIA_KEY || process.env.EIA_KEY)!) }
     : {}),
 };
 
